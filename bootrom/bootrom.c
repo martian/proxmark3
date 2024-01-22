@@ -158,53 +158,34 @@ static void UsbPacketReceived(uint8_t *packet) {
         }
         break;
 
-        case CMD_READ_MEM_DOWNLOAD: {
+        case CMD_BL_READ_MEM: {
             ack = false;
-            LED_B_ON();
-
-            size_t offset = (size_t) c->arg[0];
-            size_t count = (size_t) c->arg[1];
+            bool isok = true;
+            uint32_t addr = (uint32_t) c->arg[0];
+            uint32_t len = (uint32_t) c->arg[1];
             uint32_t flags = (uint32_t) c->arg[2];
 
-            bool isok = true;
-            uint8_t *base = NULL;
-
-            bool raw_address_mode = (flags & CMD_READ_MEM_DOWNLOAD_RAW) != 0;
-            if (!raw_address_mode) {
-
-                base = (uint8_t *) _flash_start;
-
-                size_t flash_size = get_flash_size();
-
-                // Boundary check the offset.
-                if (offset > flash_size)
+            // In regular mode addr is interpreted relative to the
+            // flash memory and len limited to stay within flash.
+            // If raw access mode is requested this is bypassed.
+            if ((flags & CMD_READ_MEM_DOWNLOAD_RAW) == 0) {
+                uint32_t flash_size = get_flash_size();
+                if (addr > flash_size)
                     isok = false;
-
-                // Clip the length if it goes past the end of the flash memory.
-                count = MIN(count, flash_size - offset);
-
-            } else {
-                // Allow reading from any memory address and length in special 'raw' mode.
-                base = NULL;
+                if (addr + len > flash_size)
+                    len = flash_size - addr;
+                addr += (uint32_t) _flash_start;
             }
 
-            if (isok) {
-                for (size_t pos = 0; pos < count; pos += PM3_CMD_DATA_SIZE) {
-                    size_t len = MIN((count - pos), PM3_CMD_DATA_SIZE);
-                    isok = 0 == reply_old(CMD_READ_MEM_DOWNLOADED, pos, len, 0, &base[offset + pos], len);
-                    if (!isok)
-                        break;
-                }
-            }
+            // This command only supports single transfers.
+            len = MIN(len, PM3_CMD_DATA_SIZE);
 
             if (isok)
-                reply_old(CMD_ACK, 1, 0, 0, 0, 0);
+                reply_old(CMD_BL_READ_MEM, len, 0, 0, (void *) addr, len);
             else
                 reply_old(CMD_NACK, 0, 0, 0, 0, 0);
-
-            LED_B_OFF();
-            break;
         }
+        break;
 
         case CMD_FINISH_WRITE: {
 #if defined ICOPYX

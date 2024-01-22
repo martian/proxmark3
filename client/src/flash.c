@@ -722,3 +722,60 @@ int flash_stop_flashing(void) {
     msleep(100);
     return PM3_SUCCESS;
 }
+
+bool bl_read_mem_one(uint32_t addr, size_t len, bool raw_mode, void *buffer, size_t *got) {
+
+    if (got != NULL)
+        *got = 0;
+
+    uint32_t flags = raw_mode ? CMD_READ_MEM_DOWNLOAD_RAW : 0;
+    SendCommandBL(CMD_BL_READ_MEM, addr, len, flags, NULL, 0);
+
+    PacketResponseNG resp;
+    if (WaitForResponse(CMD_BL_READ_MEM, &resp) == false)
+        return false;
+
+    size_t r_len = resp.oldarg[0];
+    if (r_len > len)
+        return false;
+
+    if (resp.length < r_len)
+        return false;
+
+    memcpy(buffer, resp.data.asBytes, r_len);
+
+    if (got != NULL)
+        *got = r_len;
+
+    return true;
+}
+
+bool bl_read_mem_multi(uint32_t addr, size_t len, bool raw_mode, void *buffer, size_t *got) {
+
+    if (got != NULL)
+        *got = 0;
+
+    uint8_t *b8 = (uint8_t *) buffer;
+
+    while (len > 0) {
+        size_t got1 = 0;
+        size_t len1 = MIN(PM3_CMD_DATA_SIZE, len);
+
+        if (bl_read_mem_one(addr, len1, raw_mode, b8, &got1) == false)
+            return false;
+
+        addr += got1;
+        len -= got1;
+        b8 += got1;
+
+        if (got != NULL)
+            *got += got1;
+
+        if (got1 != len1)
+            break;
+             // we got less than asked.
+             // assume it's an early break because we reached the end of flash.
+    }
+
+    return true;
+}

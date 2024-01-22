@@ -676,10 +676,17 @@ static int dumpmem_to_file(const char *filename, uint32_t addr, uint32_t len, bo
     }
 
     size_t read = 0;
-    DeviceMemType_t type = raw ? MCU_MEM : MCU_FLASH;
-    if (GetFromDevice(type, buffer, len, addr, NULL, 0, NULL, 1000, true)) {
-        res = PM3_SUCCESS;
-        read = len; // GetFromDevice does not report the actual number of bytes received.
+
+	if (in_bootloader) {
+		if (bl_read_mem_multi(addr, len, raw, buffer, &read)) {
+			res = PM3_SUCCESS;
+		}
+	} else {
+		DeviceMemType_t type = raw ? MCU_MEM : MCU_FLASH;
+		if (GetFromDevice(type, buffer, len, addr, NULL, 0, NULL, 1000, true)) {
+			res = PM3_SUCCESS;
+			read = len; // GetFromDevice does not report the actual number of bytes received.
+		}
     }
 
     if (res == PM3_SUCCESS) {

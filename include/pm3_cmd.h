@@ -369,6 +369,7 @@ typedef struct {
 #define CMD_START_FLASH                                                   0x0005
 #define CMD_CHIP_INFO                                                     0x0006
 #define CMD_BL_VERSION                                                    0x0007
+#define CMD_BL_READ_MEM                                                   0x0008
 #define CMD_NACK                                                          0x00fe
 #define CMD_ACK                                                           0x00ff
 

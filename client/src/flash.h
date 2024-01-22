@@ -48,5 +48,9 @@ int flash_reboot_bootloader(char *serial_port_name, bool wait_appear);
 int flash_write(flash_file_t *ctx);
 void flash_free(flash_file_t *ctx);
 int flash_stop_flashing(void);
+
+bool bl_read_mem_one(uint32_t addr, size_t len, bool raw_mode, void *buffer, size_t *got);
+bool bl_read_mem_multi(uint32_t addr, size_t len, bool raw_mode, void *buffer, size_t *got);
+
 #endif
 
