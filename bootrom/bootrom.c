@@ -45,7 +45,8 @@ static int reply_old(uint64_t cmd, uint64_t arg0, uint64_t arg1, uint64_t arg2, 
     txcmd.arg[2] = arg2;
 
     // Add the (optional) content to the frame, with a maximum size of PM3_CMD_DATA_SIZE
-    if (data && len) {
+    // As an exception, CMD_READ_MEM_DOWNLOADED can send from address 0.
+    if ((data != NULL || cmd == CMD_READ_MEM_DOWNLOADED) && len != 0) {
         len = MIN(len, PM3_CMD_DATA_SIZE);
         for (size_t i = 0; i < len; i++) {
             txcmd.d.asBytes[i] = ((uint8_t *)data)[i];
