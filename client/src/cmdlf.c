@@ -75,7 +75,7 @@ static int CmdHelp(const char *Cmd);
 // if key event, send break loop cmd to Pm3
 int lfsim_wait_check(uint32_t cmd) {
     PrintAndLogEx(NORMAL, "");
-    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or press " _GREEN_("<Enter>") " to abort simulation");
+    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or " _GREEN_("<Enter>") " to abort simulation");
 
     for (;;) {
         if (kbd_enter_pressed()) {
@@ -92,7 +92,7 @@ int lfsim_wait_check(uint32_t cmd) {
             }
         }
     }
-    PrintAndLogEx(INFO, "Done");
+    PrintAndLogEx(INFO, "Done!");
     return PM3_SUCCESS;
 }
 
@@ -145,9 +145,9 @@ static int CmdLFTune(const char *Cmd) {
         return PM3_EINVARG;
     }
 
-    if (freq != 125)
+    if (freq != 125) {
         divisor = LF_FREQ2DIV(freq);
-
+    }
 
     if ((is_bar + is_mix + is_value) > 1) {
         PrintAndLogEx(ERR, "Select only one output style");
@@ -155,15 +155,18 @@ static int CmdLFTune(const char *Cmd) {
     }
 
     barMode_t style = g_session.bar_mode;
-    if (is_bar)
+    if (is_bar) {
         style = STYLE_BAR;
-    if (is_mix)
+    }
+    if (is_mix) {
         style = STYLE_MIXED;
-    if (is_value)
+    }
+    if (is_value) {
         style = STYLE_VALUE;
+    }
 
     PrintAndLogEx(INFO, "Measuring LF antenna at " _YELLOW_("%.2f") " kHz", LF_DIV2FREQ(divisor));
-    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or press " _GREEN_("<Enter>") " to exit");
+    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or " _GREEN_("<Enter>") " to exit");
 
     uint8_t params[] = {1, 0};
     params[1] = divisor;
@@ -222,10 +225,11 @@ static int CmdLFTune(const char *Cmd) {
 
     params[0] = 3;
     SendCommandNG(CMD_MEASURE_ANTENNA_TUNING_LF, params, sizeof(params));
-    if (!WaitForResponseTimeout(CMD_MEASURE_ANTENNA_TUNING_LF, &resp, 1000)) {
+    if (WaitForResponseTimeout(CMD_MEASURE_ANTENNA_TUNING_LF, &resp, 1000) == false) {
         PrintAndLogEx(WARNING, "Timeout while waiting for Proxmark LF shutdown, aborting");
         return PM3_ETIMEOUT;
     }
+
     PrintAndLogEx(NORMAL, "\x1b%c[2K\r", 30);
     if (verbose) {
         PrintAndLogEx(INFO, "Min....... %u mV", v_min);
@@ -242,9 +246,9 @@ int CmdLFCommandRead(const char *Cmd) {
     CLIParserInit(&ctx, "lf cmdread",
                   "Modulate LF reader field to send command before read. All periods in microseconds.\n"
                   " - use " _YELLOW_("`lf config`") _CYAN_(" to set parameters"),
-                  "lf cmdread -d 50 -z 116 -o 166 -e W3000 -c W00110                           --> probing for Hitag 1/S\n"
-                  "lf cmdread -d 50 -z 116 -o 166 -e W3000 -c W11000                           --> probing for Hitag 2\n"
-                  "lf cmdread -d 50 -z 116 -o 166 -e W3000 -c W11000 -s 2000 -@                --> probing for Hitag 2, oscilloscope style\n"
+                  "lf cmdread -d 50 -z 116 -o 166 -e W3000 -c W00110                           --> probing for Hitag1/S\n"
+                  "lf cmdread -d 50 -z 116 -o 166 -e W3000 -c W11000                           --> probing for Hitag2\n"
+                  "lf cmdread -d 50 -z 116 -o 166 -e W3000 -c W11000 -s 2000 -@                --> probing for Hitag2, oscilloscope style\n"
                   "lf cmdread -d 48 -z 112 -o 176 -e W3000 -e S240 -e E336 -c W0S00000010000E  --> probing for Hitag (us)\n"
                  );
 
@@ -369,19 +373,21 @@ int CmdLFCommandRead(const char *Cmd) {
     }
 
     PrintAndLogEx(DEBUG, _CYAN_("Cmd read - settings"));
-    PrintAndLogEx(DEBUG, "-------------------");
-    PrintAndLogEx(DEBUG, "delay... " _YELLOW_("%u")" zero... " _YELLOW_("%u") " one... " _YELLOW_("%u")" samples... %u", payload.delay, payload.period_0,  payload.period_1, payload.samples);
+    PrintAndLogEx(DEBUG, "--------------------");
+    PrintAndLogEx(DEBUG, "Delay..... " _YELLOW_("%u"), payload.delay);
+    PrintAndLogEx(DEBUG, "Zero...... " _YELLOW_("%u"), payload.period_0);
+    PrintAndLogEx(DEBUG, "One....... " _YELLOW_("%u"), payload.period_1);
+    PrintAndLogEx(DEBUG, "Samples... " _YELLOW_("%u"), payload.samples);
     PrintAndLogEx(DEBUG, "");
     PrintAndLogEx(DEBUG, _CYAN_("Extra symbols"));
-    PrintAndLogEx(DEBUG, "-------------");
     for (i = 0; i < LF_CMDREAD_MAX_EXTRA_SYMBOLS; i++) {
         if (payload.symbol_extra[i] == 0x00)
             continue;
 
-        PrintAndLogEx(DEBUG, "  %c ... " _YELLOW_("%u"), payload.symbol_extra[i], payload.period_extra[i]);
+        PrintAndLogEx(DEBUG, "%c......... " _YELLOW_("%u"), payload.symbol_extra[i], payload.period_extra[i]);
     }
     PrintAndLogEx(DEBUG, "");
-    PrintAndLogEx(DEBUG, "data... " _YELLOW_("%s"), payload.data);
+    PrintAndLogEx(DEBUG, "Cmd....... " _YELLOW_("%s"), payload.data);
     PrintAndLogEx(DEBUG, "");
 
     if (cm) {
@@ -1661,7 +1667,7 @@ int CmdLFfind(const char *Cmd) {
     if (is_online) {
 
         if (IfPm3Hitag()) {
-            if (readHitagUid()) {
+            if (readHitagUid() == PM3_SUCCESS) {
                 PrintAndLogEx(SUCCESS, "\nValid " _GREEN_("Hitag") " found!");
                 if (search_cont) {
                     found++;

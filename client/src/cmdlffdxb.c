@@ -471,7 +471,7 @@ static const fdxbCountryMapping_t fdxbCountryMapping[] = {
     { 985, "HomeAgain (Destron Fearing/Digital Angel)" },
     { 991, "Peeva" },
     { 999, "Test range" },
-    { 0,   "N/A" } // must be the last entry
+    { 0,   "n/a" } // must be the last entry
 };
 
 static const char *mapFDBX(uint16_t countryCode) {
@@ -878,10 +878,10 @@ static int CmdFdxBSim(const char *Cmd) {
     PacketResponseNG resp;
     WaitForResponse(CMD_LF_ASK_SIMULATE, &resp);
 
-    PrintAndLogEx(INFO, "Done");
-    if (resp.status != PM3_EOPABORTED)
+    PrintAndLogEx(INFO, "Done!");
+    if (resp.status != PM3_EOPABORTED) {
         return resp.status;
-
+    }
     return PM3_SUCCESS;
 }
 
@@ -889,7 +889,7 @@ static command_t CommandTable[] = {
     {"help",    CmdHelp,      AlwaysAvailable, "this help"},
     {"demod",   CmdFdxBDemod,  AlwaysAvailable, "demodulate a FDX-B ISO11784/85 tag from the GraphBuffer"},
     {"reader",  CmdFdxBReader, IfPm3Lf,         "attempt to read at 134kHz and extract tag data"},
-    {"clone",   CmdFdxBClone,  IfPm3Lf,         "clone animal ID tag to T55x7 or Q5/T5555"},
+    {"clone",   CmdFdxBClone,  IfPm3Lf,         "clone animal ID tag to T55x7, Q5/T5555 or EM4305/4469"},
     {"sim",     CmdFdxBSim,    IfPm3Lf,         "simulate Animal ID tag"},
     {NULL, NULL, NULL, NULL}
 };

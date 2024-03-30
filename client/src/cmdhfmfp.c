@@ -165,7 +165,7 @@ static int plus_print_signature(uint8_t *uid, uint8_t uidlen, uint8_t *signature
 #define PUBLIC_PLUS_ECDA_KEYLEN 57
     const ecdsa_publickey_t nxp_plus_public_keys[] = {
         {"MIFARE Plus EV1",  "044409ADC42F91A8394066BA83D872FB1D16803734E911170412DDF8BAD1A4DADFD0416291AFE1C748253925DA39A5F39A1C557FFACD34C62E"},
-        {"MIFARE Plus Ev_x", "04BB49AE4447E6B1B6D21C098C1538B594A11A4A1DBF3D5E673DEACDEB3CC512D1C08AFA1A2768CE20A200BACD2DC7804CD7523A0131ABF607"},
+        {"MIFARE Plus Ev2", "04BB49AE4447E6B1B6D21C098C1538B594A11A4A1DBF3D5E673DEACDEB3CC512D1C08AFA1A2768CE20A200BACD2DC7804CD7523A0131ABF607"},
         {"MIFARE Plus Troika", "040F732E0EA7DF2B38F791BF89425BF7DCDF3EE4D976669E3831F324FF15751BD52AFF1782F72FF2731EEAD5F63ABE7D126E03C856FFB942AF"}
     };
 
@@ -232,9 +232,9 @@ static int get_plus_signature(uint8_t *signature, int *signature_len) {
 
 // GET VERSION
 static int plus_print_version(uint8_t *version) {
-    PrintAndLogEx(SUCCESS, "              UID: " _GREEN_("%s"), sprint_hex(version + 14, 7));
-    PrintAndLogEx(SUCCESS, "     Batch number: " _GREEN_("%s"), sprint_hex(version + 21, 5));
-    PrintAndLogEx(SUCCESS, "  Production date: week " _GREEN_("%02x") " / " _GREEN_("20%02x"), version[7 + 7 + 7 + 5], version[7 + 7 + 7 + 5 + 1]);
+    PrintAndLogEx(SUCCESS, "UID: " _GREEN_("%s"), sprint_hex(version + 14, 7));
+    PrintAndLogEx(SUCCESS, "Batch number: " _GREEN_("%s"), sprint_hex(version + 21, 5));
+    PrintAndLogEx(SUCCESS, "Production date: week " _GREEN_("%02x") " / " _GREEN_("20%02x"), version[7 + 7 + 7 + 5], version[7 + 7 + 7 + 5 + 1]);
     PrintAndLogEx(NORMAL, "");
     PrintAndLogEx(INFO, "--- " _CYAN_("Hardware Information"));
     PrintAndLogEx(INFO, "          Raw : %s", sprint_hex(version, 7));
@@ -294,7 +294,6 @@ static int CmdHFMFPInfo(const char *Cmd) {
 
     uint64_t select_status = resp.oldarg[0]; // 0: couldn't read, 1: OK, with ATS, 2: OK, no ATS, 3: proprietary Anticollision
 
-
     bool supportVersion = false;
     bool supportSignature = false;
 
@@ -305,13 +304,9 @@ static int CmdHFMFPInfo(const char *Cmd) {
         plus_print_version(version);
         supportVersion = true;
     } else {
-        // info about 14a part
+        // info about 14a part, historical bytes.
         infoHF14A(false, false, false);
-
-        // Historical bytes.
-
     }
-
 
     // Signature originality check
     uint8_t signature[56] = {0};
@@ -333,13 +328,13 @@ static int CmdHFMFPInfo(const char *Cmd) {
 
             if (cardtype == 6) {
                 if (supportSignature) {
-                    PrintAndLogEx(INFO, "          Tech: " _GREEN_("MIFARE Plus EV1"));
+                    PrintAndLogEx(INFO, "  Tech...... " _GREEN_("MIFARE Plus EV1"));
                 } else {
-                    PrintAndLogEx(INFO, "          Tech: " _YELLOW_("MIFARE Plus SE/X"));
+                    PrintAndLogEx(INFO, "  Tech...... " _YELLOW_("MIFARE Plus SE/X"));
                 }
                 isPlus = true;
             } else {
-
+                PrintAndLogEx(INFO, "  Tech...... Unknown ( " _YELLOW_("%u") " )", cardtype);
             }
         }
 
@@ -348,80 +343,98 @@ static int CmdHFMFPInfo(const char *Cmd) {
         uint16_t ATQA = card.atqa[0] + (card.atqa[1] << 8);
 
         if (ATQA & 0x0004) {
-            PrintAndLogEx(INFO, "          SIZE: " _GREEN_("2K") " (%s UID)", (ATQA & 0x0040) ? "7" : "4");
+            PrintAndLogEx(INFO, " Size...... " _GREEN_("2K") " (%s UID)", (ATQA & 0x0040) ? "7" : "4");
             isPlus = true;
         }
         if (ATQA & 0x0002) {
-            PrintAndLogEx(INFO, "          SIZE: " _GREEN_("4K") " (%s UID)", (ATQA & 0x0040) ? "7" : "4");
+            PrintAndLogEx(INFO, "  Size...... " _GREEN_("4K") " (%s UID)", (ATQA & 0x0040) ? "7" : "4");
             isPlus = true;
         }
 
         uint8_t SLmode = 0xFF;
         if (isPlus) {
             if (card.sak == 0x08) {
-                PrintAndLogEx(INFO, "            SAK: " _GREEN_("2K 7b UID"));
+                PrintAndLogEx(INFO, "  SAK....... " _GREEN_("2K 7b UID"));
                 if (select_status == 2) SLmode = 1;
             }
             if (card.sak == 0x18) {
-                PrintAndLogEx(INFO, "            SAK: " _GREEN_("4K 7b UID"));
+                PrintAndLogEx(INFO, "  SAK....... " _GREEN_("4K 7b UID"));
                 if (select_status == 2) SLmode = 1;
             }
             if (card.sak == 0x10) {
-                PrintAndLogEx(INFO, "            SAK: " _GREEN_("2K"));
+                PrintAndLogEx(INFO, "  SAK....... " _GREEN_("2K"));
                 if (select_status == 2) SLmode = 2;
             }
             if (card.sak == 0x11) {
-                PrintAndLogEx(INFO, "            SAK: " _GREEN_("4K"));
+                PrintAndLogEx(INFO, "  SAK....... " _GREEN_("4K"));
                 if (select_status == 2) SLmode = 2;
             }
         }
 
         if (card.sak == 0x20) {
             if (card.ats_len > 0) {
-                PrintAndLogEx(INFO, "           SAK: " _GREEN_("MIFARE Plus SL0/SL3") " or " _GREEN_("MIFARE DESFire"));
+                PrintAndLogEx(INFO, "  SAK....... " _GREEN_("MIFARE Plus SL0/SL3") " or " _GREEN_("MIFARE DESFire"));
                 SLmode = 3;
                 // check SL0
-                uint8_t data[250] = {0};
+                uint8_t data[128] = {0};
                 int datalen = 0;
                 // https://github.com/Proxmark/proxmark3/blob/master/client/luascripts/mifarePlus.lua#L161
                 uint8_t cmd[3 + 16] = {0xa8, 0x90, 0x90, 0x00};
                 int res = ExchangeRAW14a(cmd, sizeof(cmd), true, false, data, sizeof(data), &datalen, false);
-
+                if (res != PM3_SUCCESS) {
+                    PrintAndLogEx(INFO, "identification failed");
+                    PrintAndLogEx(NORMAL, "");
+                    DropField();
+                    return PM3_SUCCESS;
+                }
                 // DESFire answers 0x1C or 67 00
                 // Plus answers 0x0B, 0x09, 0x06
                 // 6D00 is "INS code not supported" in APDU
-                if (data[0] != 0x0b && data[0] != 0x09 && data[0] != 0x1C && data[0] != 0x67 && data[0] != 0x6d) {
+                if (
+                    data[0] != 0x0B &&
+                    data[0] != 0x09 &&
+                    data[0] != 0x1C &&
+                    data[0] != 0x67 &&
+                    data[0] != 0x6D &&
+                    data[0] != 0x6E) {
+
                     PrintAndLogEx(INFO, _RED_("Send copy to iceman of this command output!"));
                     PrintAndLogEx(INFO, "data: %s", sprint_hex(data, datalen));
                 }
 
-                if ((memcmp(data, "\x67\x00", 2) == 0) ||
-                        (memcmp(data, "\x1C\x83\x0C", 3) == 0)
+                if ((memcmp(data, "\x67\x00", 2) == 0) ||   // wrong length
+                        (memcmp(data, "\x1C\x83\x0C", 3) == 0)  // desfire answers
                    ) {
-                    PrintAndLogEx(INFO, "        result: " _RED_("MIFARE DESFire"));
+                    PrintAndLogEx(INFO, "  result.... " _RED_("MIFARE DESFire"));
                     PrintAndLogEx(HINT, "Hint:  Try " _YELLOW_("`hf mfdes info`"));
                     DropField();
                     return PM3_SUCCESS;
+
+//                } else if (memcmp(data, "\x68\x82", 2) == 0) {  // Secure message not supported
                 } else if (memcmp(data, "\x6D\x00", 2) == 0) {
+//                } else if (memcmp(data, "\x6E\x00", 2) == 0) {  // Class not supported
                     isPlus = false;
                 } else {
-                    PrintAndLogEx(INFO, "        result: " _GREEN_("MIFARE Plus SL0/SL3"));
+                    PrintAndLogEx(INFO, "  result.... " _GREEN_("MIFARE Plus SL0/SL3"));
                 }
 
-                if (!res && datalen > 1 && data[0] == 0x09) {
+                if ((datalen > 1) &&
+                        (data[0] == 0x09)) {
                     SLmode = 0;
                 }
             }
         }
+
 
         if (isPlus) {
             // How do we detect SL0 / SL1 / SL2 / SL3 modes?!?
             PrintAndLogEx(INFO, "--- " _CYAN_("Security Level (SL)"));
 
             if (SLmode != 0xFF)
-                PrintAndLogEx(SUCCESS, "       SL mode: " _YELLOW_("SL%d"), SLmode);
+                PrintAndLogEx(SUCCESS, "  SL mode... " _YELLOW_("SL%d"), SLmode);
             else
-                PrintAndLogEx(WARNING, "       SL mode: " _YELLOW_("unknown"));
+                PrintAndLogEx(WARNING, "  SL mode... " _YELLOW_("unknown"));
+
             switch (SLmode) {
                 case 0:
                     PrintAndLogEx(INFO, "  SL 0: initial delivery configuration, used for card personalization");
@@ -440,7 +453,7 @@ static int CmdHFMFPInfo(const char *Cmd) {
             }
         }
     } else {
-        PrintAndLogEx(INFO, "\tMifare Plus info not available.");
+        PrintAndLogEx(INFO, "   Mifare Plus info not available");
     }
     PrintAndLogEx(NORMAL, "");
     DropField();
@@ -1723,7 +1736,6 @@ static int CmdHFMFPDump(const char *Cmd) {
         return PM3_SUCCESS;
     */
 }
-
 
 static int CmdHFMFPMAD(const char *Cmd) {
 

@@ -34,6 +34,7 @@
 #include "aidsearch.h"
 #include "fileutils.h"          // saveFile
 #include "iclass_cmd.h"         // picopass defines
+#include "cmdhf.h"               // handle HF plot
 
 #define MAX_14B_TIMEOUT_MS (4949U)
 
@@ -793,24 +794,24 @@ static void print_sr_blocks(uint8_t *data, size_t len, const uint8_t *uid, bool 
 
         if (in_repeated_block == false) {
             PrintAndLogEx(INFO,
-                        "%3d/0x%02X | %s| %s | %s",
-                        i,
-                        i,
-                        sprint_hex(data + (i * ST25TB_SR_BLOCK_SIZE), ST25TB_SR_BLOCK_SIZE),
-                        get_st_lock_info(chipid, systemblock, i),
-                        sprint_ascii(data + (i * ST25TB_SR_BLOCK_SIZE), ST25TB_SR_BLOCK_SIZE)
-                    );
+                          "%3d/0x%02X | %s| %s | %s",
+                          i,
+                          i,
+                          sprint_hex(data + (i * ST25TB_SR_BLOCK_SIZE), ST25TB_SR_BLOCK_SIZE),
+                          get_st_lock_info(chipid, systemblock, i),
+                          sprint_ascii(data + (i * ST25TB_SR_BLOCK_SIZE), ST25TB_SR_BLOCK_SIZE)
+                         );
         }
     }
 
     PrintAndLogEx(INFO,
-                "%3d/0x%02X | %s| %s | %s",
-                0xFF,
-                0xFF,
-                sprint_hex(systemblock, ST25TB_SR_BLOCK_SIZE),
-                get_st_lock_info(chipid, systemblock, 0xFF),
-                sprint_ascii(systemblock, ST25TB_SR_BLOCK_SIZE)
-            );
+                  "%3d/0x%02X | %s| %s | %s",
+                  0xFF,
+                  0xFF,
+                  sprint_hex(systemblock, ST25TB_SR_BLOCK_SIZE),
+                  get_st_lock_info(chipid, systemblock, 0xFF),
+                  sprint_ascii(systemblock, ST25TB_SR_BLOCK_SIZE)
+                 );
 
     print_footer();
 }
@@ -867,7 +868,8 @@ static int CmdHF14BSniff(const char *Cmd) {
 
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hf 14b sniff",
-                  "Sniff the communication reader and tag",
+                  "Sniff the communication between reader and tag.\n"
+                  "Use `hf 14b list` to view collected data.",
                   "hf 14b sniff"
                  );
 
@@ -878,12 +880,12 @@ static int CmdHF14BSniff(const char *Cmd) {
     CLIExecWithReturn(ctx, Cmd, argtable, true);
     CLIParserFree(ctx);
 
+    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " to abort sniffing");
+
     PacketResponseNG resp;
     clearCommandBuffer();
     SendCommandNG(CMD_HF_ISO14443B_SNIFF, NULL, 0);
-
     WaitForResponse(CMD_HF_ISO14443B_SNIFF, &resp);
-
     PrintAndLogEx(HINT, "Try `" _YELLOW_("hf 14b list") "` to view captured tracelog");
     PrintAndLogEx(HINT, "Try `" _YELLOW_("trace save -h") "` to save tracelog for later analysing");
     return PM3_SUCCESS;
@@ -1180,6 +1182,9 @@ static int CmdHF14Binfo(const char *Cmd) {
     CLIParserFree(ctx);
     return infoHF14B(verbose, do_aid_search);
 }
+
+// #define ISO14443B_READ_BLK     0x08
+// #define ISO14443B_WRITE_BLK    0x09
 
 static int read_sr_block(uint8_t blockno, uint8_t *out) {
     struct {
@@ -1572,7 +1577,7 @@ static int CmdHF14BSriWrbl(const char *Cmd) {
         arg_int0("b", "block",  "<dec>", "block number"),
         arg_str1("d", "data",  "<hex>", "4 hex bytes"),
         arg_lit0(NULL, "512", "target SRI 512 tag"),
-        arg_lit0(NULL, "4k", "target SRIX 4k tag"),
+        arg_lit0(NULL, "4k", "target SRIX 4k tag (def)"),
         arg_lit0(NULL, "sb", "special block write at end of memory (0xFF)"),
         arg_lit0(NULL, "force", "overrides block range checks"),
         arg_param_end
@@ -1601,6 +1606,11 @@ static int CmdHF14BSriWrbl(const char *Cmd) {
     if (use_sri512 + use_srix4k > 1) {
         PrintAndLogEx(FAILED, "Select only one card type");
         return PM3_EINVARG;
+    }
+
+    // Set default
+    if (use_sri512 == false) {
+        use_srix4k = true;
     }
 
     if (use_srix4k && blockno > 0x7F) {
@@ -1637,7 +1647,7 @@ static int CmdHF14BSriWrbl(const char *Cmd) {
                      );
     }
 
-    int status = write_sr_block(blockno, 4, data);
+    int status = write_sr_block(blockno, ST25TB_SR_BLOCK_SIZE, data);
     if (status != PM3_SUCCESS) {
         return status;
     }
@@ -1843,6 +1853,121 @@ static int CmdHF14BDump(const char *Cmd) {
 
     return PM3_ESOFT;
 }
+
+static int CmdHF14BRestore(const char *Cmd) {
+
+    CLIParserContext *ctx;
+    CLIParserInit(&ctx, "hf 14b restore",
+                  "Restore data from (bin/eml/json) dump file to tag\n"
+                  "If the dump file includes the special block at the end it will be ignored\n",
+                  "hf 14b restore --4k -f myfilename\n"
+                  "hf 14b restore --512 -f myfilename\n"
+                 );
+
+    void *argtable[] = {
+        arg_param_begin,
+        arg_str0("f", "file", "<fn>", "(optional) filename,  if no <name> UID will be used as filename"),
+        arg_lit0(NULL, "512", "target SRI 512 tag"),
+        arg_lit0(NULL, "4k", "target SRIX 4k tag (def)"),
+        arg_param_end
+    };
+    CLIExecWithReturn(ctx, Cmd, argtable, true);
+
+    int fnlen = 0;
+    char filename[FILE_PATH_SIZE] = {0};
+    CLIParamStrToBuf(arg_get_str(ctx, 1), (uint8_t *)filename, FILE_PATH_SIZE, &fnlen);
+    bool use_sri512 = arg_get_lit(ctx, 2);
+    bool use_srix4k = arg_get_lit(ctx, 3);
+    CLIParserFree(ctx);
+
+    if (use_sri512 + use_srix4k > 1) {
+        PrintAndLogEx(FAILED, "Select only one card type");
+        return PM3_EINVARG;
+    }
+
+    // Set default
+    if (use_sri512 == false) {
+        use_srix4k = true;
+    }
+
+    char s[7];
+    memset(s, 0, sizeof(s));
+    uint16_t block_cnt = 0;
+    if (use_sri512) {
+        block_cnt = 16;
+        memcpy(s, "SRI512", 7);
+    } else if (use_srix4k) {
+        block_cnt = 128;
+        memcpy(s, "SRIX4K", 7);
+    }
+
+    // reserve memory
+    uint8_t *data = NULL;
+    size_t bytes_read = 0;
+    int res = pm3_load_dump(filename, (void **)&data, &bytes_read, (ST25TB_SR_BLOCK_SIZE * block_cnt));
+    if (res != PM3_SUCCESS) {
+        PrintAndLogEx(FAILED, "Failed to load file");
+        return res;
+    }
+
+    // Ignore remaining block if the file is 1 block larger than the expected size
+    // (because hf 14b dump also saves the special block at the end of the memory, it will be ignored by the restore command)
+    if (bytes_read != (block_cnt * ST25TB_SR_BLOCK_SIZE) && bytes_read != ((block_cnt + 1) * ST25TB_SR_BLOCK_SIZE)) {
+        PrintAndLogEx(ERR, "File content error. Read %zu", bytes_read);
+        free(data);
+        return PM3_EFILE;
+    }
+    PrintAndLogEx(INFO, "Copying to %s", s);
+
+    int blockno = 0;
+    while (bytes_read) {
+
+        int status = write_sr_block(blockno, ST25TB_SR_BLOCK_SIZE, data + blockno * ST25TB_SR_BLOCK_SIZE);
+        if (status != PM3_SUCCESS) {
+            PrintAndLogEx(FAILED, "Write failed");
+            free(data);
+            return status;
+        }
+
+        // verify
+        uint8_t out[ST25TB_SR_BLOCK_SIZE] = {0};
+        status = read_sr_block(blockno, out);
+        if (status == PM3_SUCCESS) {
+            if (memcmp(data + blockno * ST25TB_SR_BLOCK_SIZE, out, ST25TB_SR_BLOCK_SIZE) == 0) {
+                printf("\33[2K\r");
+                PrintAndLogEx(INFO, "SRx write block %d/%d ( " _GREEN_("ok") " )" NOLF, blockno, block_cnt - 1);
+            } else {
+                printf("\n");
+                PrintAndLogEx(INFO, "SRx write block %d/%d ( " _RED_("different") " )", blockno, block_cnt - 1);
+            }
+        } else {
+            printf("\n");
+            PrintAndLogEx(INFO, "Verifying block %d/%d ( " _RED_("failed") " )", blockno, block_cnt - 1);
+        }
+
+        fflush(stdout);
+
+        bytes_read -= ST25TB_SR_BLOCK_SIZE;
+        blockno++;
+        if (blockno >= block_cnt) break;
+    }
+
+    PrintAndLogEx(NORMAL, "\n");
+    free(data);
+
+    // confirm number written blocks.
+    if (blockno != block_cnt) {
+        PrintAndLogEx(ERR, "File content error. There must be %d blocks", block_cnt);
+        return PM3_EFILE;
+    }
+
+    PrintAndLogEx(SUCCESS, "Card loaded " _YELLOW_("%d") " blocks from file", block_cnt);
+    PrintAndLogEx(INFO, "Done!");
+
+
+    return PM3_SUCCESS;
+}
+
 /*
 
 static uint32_t srix4kEncode(uint32_t value) {
@@ -2317,12 +2442,12 @@ static int CmdHF14BAPDU(const char *Cmd) {
     int user_timeout = arg_get_int_def(ctx, 9, -1);
     CLIParserFree(ctx);
 
-    PrintAndLogEx(INFO, ">>>> %s%s%s >>>> " _YELLOW_("%s"),
-                  activate_field ? "sel" : "",
-                  leave_signal_on ? "| keep" : "",
-                  decode_TLV ? "| TLV" : "",
-                  sprint_hex(data, datalen)
+    PrintAndLogEx(SUCCESS, _YELLOW_("%s%s%s"),
+                  activate_field ? "select card" : "",
+                  leave_signal_on ? ", keep field on" : "",
+                  decode_TLV ? ", TLV" : ""
                  );
+    PrintAndLogEx(SUCCESS, ">>> %s", sprint_hex_inrow(data, datalen));
 
     if (decode_APDU) {
         APDU_t apdu;
@@ -2519,9 +2644,10 @@ static int CmdHF14BView(const char *Cmd) {
 }
 
 static command_t CommandTable[] = {
+    {"---------", CmdHelp,          AlwaysAvailable, "----------------------- " _CYAN_("General") " -----------------------"},
     {"help",      CmdHelp,          AlwaysAvailable, "This help"},
     {"list",      CmdHF14BList,     AlwaysAvailable, "List ISO-14443-B history"},
-    {"---------", CmdHelp,          AlwaysAvailable, "----------------------- " _CYAN_("general") " -----------------------"},
+    {"---------", CmdHelp,          AlwaysAvailable, "----------------------- " _CYAN_("Operations") " -----------------------"},
     {"apdu",      CmdHF14BAPDU,     IfPm3Iso14443b,  "Send ISO 14443-4 APDU to tag"},
     {"dump",      CmdHF14BDump,     IfPm3Iso14443b,  "Read all memory pages of an ISO-14443-B tag, save to file"},
     {"info",      CmdHF14Binfo,     IfPm3Iso14443b,  "Tag information"},
@@ -2529,7 +2655,7 @@ static command_t CommandTable[] = {
     {"raw",       CmdHF14BRaw,      IfPm3Iso14443b,  "Send raw hex data to tag"},
     {"rdbl",      CmdHF14BSriRdBl,  IfPm3Iso14443b,  "Read SRI512/SRIX4 block"},
     {"reader",    CmdHF14BReader,   IfPm3Iso14443b,  "Act as a ISO-14443-B reader to identify a tag"},
-//    {"restore",     CmdHF14BRestore,     IfPm3Iso14443b,   "Restore from file to all memory pages of an ISO-14443-B tag"},
+    {"restore",   CmdHF14BRestore,  IfPm3Iso14443b,  "Restore from file to all memory pages of an ISO-14443-B tag"},
     {"sim",       CmdHF14BSim,      IfPm3Iso14443b,  "Fake ISO ISO-14443-B tag"},
     {"sniff",     CmdHF14BSniff,    IfPm3Iso14443b,  "Eavesdrop ISO-14443-B"},
     {"wrbl",      CmdHF14BSriWrbl,  IfPm3Iso14443b,  "Write data to a SRI512/SRIX4 tag"},
@@ -2569,44 +2695,40 @@ int infoHF14B(bool verbose, bool do_aid_search) {
 // get and print general info about all known 14b chips
 int readHF14B(bool loop, bool verbose) {
     bool found = false;
+    int res = PM3_SUCCESS;
     do {
         found = false;
 
         // try std 14b (atqb)
         found |= HF14B_std_reader(verbose);
-        if (found && loop)
-            continue;
-        else if (found)
-            return PM3_SUCCESS;
+        if (found)
+            goto plot;
 
         // try ST Microelectronics 14b
         found |= HF14B_st_reader(verbose);
-        if (found && loop)
-            continue;
-        else if (found)
-            return PM3_SUCCESS;
+        if (found)
+            goto plot;
 
         // Picopass
-        found |= HF14B_picopass_reader(verbose) ;
-        if (found && loop)
-            continue;
-        else if (found)
-            return PM3_SUCCESS;
+        found |= HF14B_picopass_reader(verbose);
+        if (found)
+            goto plot;
 
         // try ASK CT 14b
         found |= HF14B_ask_ct_reader(verbose);
-        if (found && loop)
-            continue;
-        else if (found)
-            return PM3_SUCCESS;
+        if (found)
+            goto plot;
 
         // try unknown 14b read commands (to be identified later)
         // could be read of calypso, CEPAS, moneo, or pico pass.
         found |= HF14B_other_reader(verbose);
-        if (found && loop)
-            continue;
-        else if (found)
-            return PM3_SUCCESS;
+        if (found)
+            goto plot;
+plot:
+        res = handle_hf_plot(verbose);
+        if (res != PM3_SUCCESS) {
+            PrintAndLogEx(DEBUG, "plot failed");
+        }
 
     } while (loop && kbd_enter_pressed() == false);
 

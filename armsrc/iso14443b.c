@@ -722,15 +722,33 @@ static void TransmitFor14443b_AsTag(const uint8_t *response, uint16_t len) {
 //-----------------------------------------------------------------------------
 void SimulateIso14443bTag(const uint8_t *pupi) {
 
+    /*
+        // the only commands we understand is WUPB, AFI=0, Select All, N=1:
+        static const uint8_t cmdWUPB[] = { ISO14443B_REQB, 0x00, 0x08, 0x39, 0x73 };
+        // ... and REQB, AFI=0, Normal Request, N=1:
+        static const uint8_t cmdREQB[] = { ISO14443B_REQB, 0x00, 0x00, 0x71, 0xFF };
+        // ... and HLTB
+        static const uint8_t cmdHLTB[] = { 0x50, 0xff, 0xff, 0xff, 0xff };
+        // ... and ATTRIB
+        static const uint8_t cmdATTRIB[] = { ISO14443B_ATTRIB, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    */
     LED_A_ON();
-    // the only commands we understand is WUPB, AFI=0, Select All, N=1:
-//    static const uint8_t cmdWUPB[] = { ISO14443B_REQB, 0x00, 0x08, 0x39, 0x73 }; // WUPB
-    // ... and REQB, AFI=0, Normal Request, N=1:
-//    static const uint8_t cmdREQB[] = { ISO14443B_REQB, 0x00, 0x00, 0x71, 0xFF }; // REQB
-    // ... and HLTB
-//  static const uint8_t cmdHLTB[] = { 0x50, 0xff, 0xff, 0xff, 0xff }; // HLTB
-    // ... and ATTRIB
-//    static const uint8_t cmdATTRIB[] = { ISO14443B_ATTRIB, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; // ATTRIB
+
+    // setup device.
+    FpgaDownloadAndGo(FPGA_BITSTREAM_HF);
+
+    // connect Demodulated Signal to ADC:
+    SetAdcMuxFor(GPIO_MUXSEL_HIPKD);
+
+    // Set up the synchronous serial port
+    FpgaSetupSsc(FPGA_MAJOR_MODE_HF_SIMULATOR);
+
+    // allocate command receive buffer
+    BigBuf_free_keep_EM();
+    BigBuf_Clear_keep_EM();
+
+    clear_trace();
+    set_tracing(true);
 
     // ... if not PUPI/UID is supplied we always respond with ATQB, PUPI = 820de174, Application Data = 0x20381922,
     // supports only 106kBit/s in both directions, max frame size = 32Bytes,
@@ -751,21 +769,6 @@ void SimulateIso14443bTag(const uint8_t *pupi) {
 
     // response to HLTB and ATTRIB
     static const uint8_t respOK[] = {0x00, 0x78, 0xF0};
-
-    // setup device.
-    FpgaDownloadAndGo(FPGA_BITSTREAM_HF);
-
-    // connect Demodulated Signal to ADC:
-    SetAdcMuxFor(GPIO_MUXSEL_HIPKD);
-
-    // Set up the synchronous serial port
-    FpgaSetupSsc(FPGA_MAJOR_MODE_HF_SIMULATOR);
-
-    // allocate command receive buffer
-    BigBuf_free();
-    BigBuf_Clear_ext(false);
-    clear_trace();
-    set_tracing(true);
 
     uint16_t len, cmdsReceived = 0;
     int cardSTATE = SIM_NOFIELD;
@@ -821,12 +824,11 @@ void SimulateIso14443bTag(const uint8_t *pupi) {
         // REQ or WUP request in ANY state
         // WUP in HALTED state
         if (len == 5) {
-            if ((receivedCmd[0] == ISO14443B_REQB && (receivedCmd[2] & 0x8) == 0x8 && cardSTATE == SIM_HALTED) ||
-                    receivedCmd[0] == ISO14443B_REQB) {
+            if (((receivedCmd[0] == ISO14443B_REQB) && ((receivedCmd[2] & 0x08) == 0x08) && (cardSTATE == SIM_HALTED)) ||
+                    (receivedCmd[0] == ISO14443B_REQB)) {
 
                 LogTrace(receivedCmd, len, 0, 0, NULL, true);
                 cardSTATE = SIM_SELECTING;
-
             }
         }
 
@@ -879,34 +881,22 @@ void SimulateIso14443bTag(const uint8_t *pupi) {
                         Dbprintf("new cmd from reader: len=%d, cmdsRecvd=%d", len, cmdsReceived);
                     }
 
-                    // CRC Check, if long enough
-                    if (len >= 3) {
-
-                        if (check_crc(CRC_14443_B, receivedCmd, len) == false) {
-                            if (g_dbglevel >= DBG_DEBUG) {
-                                DbpString("CRC fail");
-                            }
-                        }
-                    } else {
-                        if (g_dbglevel >= DBG_DEBUG) {
-                            DbpString("CRC ok");
-                        }
-                    }
                     cardSTATE = SIM_IDLE;
                 }
                 break;
             }
-            default:
+            default: {
                 break;
+            }
         }
 
         ++cmdsReceived;
     }
 
-    if (g_dbglevel >= DBG_DEBUG)
+    switch_off();
+    if (g_dbglevel >= DBG_DEBUG) {
         Dbprintf("Emulator stopped. Trace length: %d ", BigBuf_get_traceLen());
-
-    switch_off(); //simulate
+    }
 }
 
 /*
@@ -1394,7 +1384,7 @@ static int Get14443bAnswerFromTag(uint8_t *response, uint16_t max_len, uint32_t 
             *eof_time = GetCountSspClkDelta(dma_start_time) - DELAY_TAG_TO_ARM;  // end of EOF
 
             if (Demod.len > Demod.max_len) {
-                ret = PM3_EOVFLOW; // overflow
+                ret = PM3_EOVFLOW;
             }
             break;
         }
@@ -1410,13 +1400,15 @@ static int Get14443bAnswerFromTag(uint8_t *response, uint16_t max_len, uint32_t 
         return ret;
     }
 
-    if (Demod.len > 0) {
-        uint32_t sof_time = *eof_time - HF14_ETU_TO_SSP(
-                                (Demod.len * (8 + 2)) // time for byte transfers
-                                + (10 + 2)  // time for SOF transfer
-                                + (10)                // time for EOF transfer
-                            )
-                            ;
+    if (Demod.len) {
+
+        // 3 * 10  + 20 + 10 == 60,    60 << 5  = 1920
+
+        // We are counting backwards here from EOF
+        // tranfers time (in ETU) for
+        //                         bytes            SOF      EOF
+        uint32_t deduct = (Demod.len * (8 + 2)) + (10 + 2) + 10;
+        uint32_t sof_time = *eof_time - HF14_ETU_TO_SSP(deduct);
         LogTrace(Demod.output, Demod.len, sof_time, *eof_time, NULL, false);
     }
 
@@ -1517,8 +1509,8 @@ static void CodeIso14443bAsReader(const uint8_t *cmd, int len, bool framing) {
     int i;
     tosend_reset();
 
-    // add framing enable flag. xerox chips use unframed commands during anticollision
-
+    // add framing enable flag.
+    // xerox chips use unframed commands during anticollision
     if (framing) {
         // Send SOF
         // 10-11 ETUs of ZERO
@@ -1878,12 +1870,13 @@ static int iso14443b_select_xrx_card(iso14b_card_select_t *card) {
     uint32_t start_time = 0;
     uint32_t eof_time = 0;
 
-    iso14b_set_timeout(24); // wait for carrier
+    // wait for carrier
+    iso14b_set_timeout(24);
 
     // wup1
     CodeAndTransmit14443bAsReader(x_wup1, sizeof(x_wup1), &start_time, &eof_time, true);
 
-    start_time = eof_time + US_TO_SSP(9000);    // 9ms before next cmd
+    start_time = eof_time + US_TO_SSP(9000);    // 9ms before next cmd ( 30510 )
 
     // wup2
     CodeAndTransmit14443bAsReader(x_wup2, sizeof(x_wup2), &start_time, &eof_time, true);
@@ -1891,21 +1884,20 @@ static int iso14443b_select_xrx_card(iso14b_card_select_t *card) {
     uint64_t uid = 0;
     uint16_t retlen = 0;
 
-    for (int uid_pos = 0; uid_pos < 64; uid_pos += 2) {
-        int slot;
+    for (uint8_t uid_pos = 0; uid_pos < 64; uid_pos += 2) {
 
+        uint8_t slot;
         for (slot = 0; slot < 4; slot++) {
-            start_time = eof_time + HF14_ETU_TO_SSP(30); //(24); // next slot after 24 ETU
 
-            if (Get14443bAnswerFromTag(x_atqb, sizeof(x_atqb), s_iso14b_timeout, &eof_time, &retlen) != PM3_SUCCESS) {
-                if (retlen > 0) {
-                    Dbprintf("unexpected data %d", retlen);
-                }
+            // next slot after 24 ETU  (786)
+            start_time = eof_time + HF14_ETU_TO_SSP(30);
+            Get14443bAnswerFromTag(x_atqb, sizeof(x_atqb), s_iso14b_timeout, &eof_time, &retlen);
+            if (retlen > 0) {
+                Dbprintf("unexpected data %d", retlen);
                 return PM3_ECARDEXCHANGE;
             }
 
             // tx unframed slot-marker
-
             if (Demod.posCount) {   // no rx, but subcarrier burst detected
                 uid |= (uint64_t)slot << uid_pos;
 
@@ -1989,10 +1981,10 @@ static int iso14443b_select_xrx_card(iso14b_card_select_t *card) {
 
     // apply PASSWORD command
 
-    txbuf[0]  = 2;
+    txbuf[0]  = 0x02;
     txbuf[1]  = 0x38;
     // uid from previous command used
-    txbuf[10] = 3;
+    txbuf[10] = 0x03;
     txbuf[11] = 0x4e;
     txbuf[12] = 0x4b;
     txbuf[13] = 0x53;
@@ -2016,7 +2008,7 @@ static int iso14443b_select_xrx_card(iso14b_card_select_t *card) {
         return PM3_ECRC;
     }
 
-    if (x_atqb[0] != 2 || x_atqb[1] != 0) {
+    if (x_atqb[0] != 0x02 || x_atqb[1] != 0x00) {
         return PM3_EWRONGANSWER;
     }
 
@@ -2375,7 +2367,9 @@ void SniffIso14443b(void) {
 
     FpgaDownloadAndGo(FPGA_BITSTREAM_HF);
 
-    DbpString("Starting to sniff. Press PM3 Button to stop.");
+    if (g_dbglevel >= DBG_INFO) {
+        DbpString("Press " _GREEN_("pm3 button") " to abort sniffing");
+    }
 
     BigBuf_free();
     clear_trace();

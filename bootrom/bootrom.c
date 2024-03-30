@@ -96,24 +96,24 @@ static uint32_t flash_size_from_cidr(uint32_t cidr) {
         case 0:
             return 0;
         case 1:
-            return 8*1024;
+            return 8 * 1024;
         case 2:
-            return 16*1024;
+            return 16 * 1024;
         case 3:
-            return 32*1024;
+            return 32 * 1024;
         case 5:
-            return 64*1024;
+            return 64 * 1024;
         case 7:
-            return 128*1024;
+            return 128 * 1024;
         case 9:
-            return 256*1024;
+            return 256 * 1024;
         case 10:
-            return 512*1024;
+            return 512 * 1024;
         case 12:
-            return 1024*1024;
+            return 1024 * 1024;
         case 14:
         default: // for 'reserved' values, guess 2MB
-            return 2048*1024;
+            return 2048 * 1024;
     }
 }
 
@@ -170,7 +170,7 @@ static void UsbPacketReceived(uint8_t *packet) {
             bool isok = true;
             uint8_t *base = NULL;
 
-            bool raw_address_mode = (flags & CMD_READ_MEM_DOWNLOAD_RAW) != 0;
+            bool raw_address_mode = ((flags & READ_MEM_DOWNLOAD_FLAG_RAW) == READ_MEM_DOWNLOAD_FLAG_RAW);
             if (!raw_address_mode) {
 
                 base = (uint8_t *) _flash_start;
@@ -187,6 +187,9 @@ static void UsbPacketReceived(uint8_t *packet) {
             } else {
                 // Allow reading from any memory address and length in special 'raw' mode.
                 base = NULL;
+                // Boundary check against end of addressable space.
+                if (offset > 0)
+                    count = MIN(count, -offset);
             }
 
             if (isok) {

@@ -468,7 +468,11 @@ static int CmdFlashMemInfo(const char *Cmd) {
 //    shall_write = arg_get_lit(ctx, 5);
     CLIParserFree(ctx);
 
-    if (res || (dlen > 0 && dlen < sizeof(id))) {
+    if (res) {
+        return PM3_EINVARG;
+    }
+
+    if (dlen > 0 && dlen < sizeof(id)) {
         PrintAndLogEx(FAILED, "Error parsing flash memory id, expect 8, got %d", dlen);
         return PM3_EINVARG;
     }
@@ -594,7 +598,7 @@ static int CmdFlashMemInfo(const char *Cmd) {
         PrintAndLogEx(
             (is_keyok) ? SUCCESS : FAILED,
             "RDV4 RSA private key check... ( %s )",
-            (is_keyok) ?  _GREEN_("ok") : _YELLOW_("N/A")
+            (is_keyok) ?  _GREEN_("ok") : _YELLOW_("n/aA")
         );
     }
 

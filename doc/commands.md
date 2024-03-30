@@ -138,7 +138,6 @@ Check column "offline" for their availability.
 |`data samples           `|N       |`Get raw samples for graph window (GraphBuffer)`
 |`data save              `|Y       |`Save signal trace data  (from graph window)`
 |`data setdebugmode      `|Y       |`Set Debugging Level on client side`
-|`data tune              `|N       |`Measure tuning of device antenna. Results shown in graph window`
 
 
 ### emv
@@ -149,7 +148,7 @@ Check column "offline" for their availability.
 |-------                  |------- |-----------
 |`emv help               `|Y       |`This help`
 |`emv list               `|Y       |`List ISO7816 history`
-|`emv test               `|Y       |`Crypto logic test`
+|`emv test               `|Y       |`Crypto logic selftest`
 |`emv challenge          `|N       |`Generate challenge`
 |`emv exec               `|N       |`Executes EMV contactless transaction`
 |`emv genac              `|N       |`Generate ApplicationCryptogram`
@@ -217,6 +216,7 @@ Check column "offline" for their availability.
 |`hf 14b raw             `|N       |`Send raw hex data to tag`
 |`hf 14b rdbl            `|N       |`Read SRI512/SRIX4 block`
 |`hf 14b reader          `|N       |`Act as a ISO-14443-B reader to identify a tag`
+|`hf 14b restore         `|N       |`Restore from file to all memory pages of an ISO-14443-B tag`
 |`hf 14b sim             `|N       |`Fake ISO ISO-14443-B tag`
 |`hf 14b sniff           `|N       |`Eavesdrop ISO-14443-B`
 |`hf 14b wrbl            `|N       |`Write data to a SRI512/SRIX4 tag`
@@ -246,8 +246,8 @@ Check column "offline" for their availability.
 |`hf 15 wipe             `|N       |`Wipe card to zeros`
 |`hf 15 wrbl             `|N       |`Write a block`
 |`hf 15 sim              `|N       |`Fake an ISO-15693 tag`
-|`hf 15 eload            `|N       |`Load image file into emulator to be used by 'sim' command`
-|`hf 15 esave            `|N       |`Save emulator memory into image file`
+|`hf 15 eload            `|N       |`Upload file into emulator memory`
+|`hf 15 esave            `|N       |`Save emulator memory to file`
 |`hf 15 eview            `|N       |`View emulator memory`
 |`hf 15 slixwritepwd     `|N       |`Writes a password on a SLIX ISO-15693 tag`
 |`hf 15 slixeasdisable   `|N       |`Disable EAS mode on SLIX ISO-15693 tag`
@@ -378,33 +378,6 @@ Check column "offline" for their availability.
 |`hf gallagher decode    `|Y       |`Decode Gallagher credential block`
 
 
-### hf ksx6924
-
- { KS X 6924 (T-Money, Snapper+) RFIDs }
-
-|command                  |offline |description
-|-------                  |------- |-----------
-|`hf ksx6924 help        `|Y       |`This help`
-|`hf ksx6924 select      `|N       |`Select application, and leave field up`
-|`hf ksx6924 info        `|N       |`Get info about a KS X 6924 (T-Money, Snapper+) transit card`
-|`hf ksx6924 balance     `|N       |`Get current purse balance`
-|`hf ksx6924 init        `|N       |`Perform transaction initialization with Mpda`
-|`hf ksx6924 prec        `|N       |`Send proprietary get record command (CLA=90, INS=4C)`
-
-
-### hf jooki
-
- { Jooki RFIDs...                      }
-
-|command                  |offline |description
-|-------                  |------- |-----------
-|`hf jooki help          `|Y       |`This help`
-|`hf jooki clone         `|N       |`Write a Jooki token`
-|`hf jooki decode        `|Y       |`Decode Jooki token`
-|`hf jooki encode        `|Y       |`Encode Jooki token`
-|`hf jooki sim           `|N       |`Simulate Jooki token`
-
-
 ### hf iclass
 
  { ICLASS RFIDs...                     }
@@ -426,7 +399,7 @@ Check column "offline" for their availability.
 |`hf iclass loclass      `|Y       |`Use loclass to perform bruteforce reader attack`
 |`hf iclass lookup       `|Y       |`Uses authentication trace to check for key in dictionary file`
 |`hf iclass sim          `|N       |`Simulate iCLASS tag`
-|`hf iclass eload        `|N       |`Load Picopass / iCLASS dump file into emulator memory`
+|`hf iclass eload        `|N       |`Upload file into emulator memory`
 |`hf iclass esave        `|N       |`Save emulator memory to file`
 |`hf iclass esetblk      `|N       |`Set emulator memory block data`
 |`hf iclass eview        `|N       |`View emulator memory`
@@ -438,6 +411,46 @@ Check column "offline" for their availability.
 |`hf iclass managekeys   `|Y       |`Manage keys to use with iclass commands`
 |`hf iclass permutekey   `|Y       |`Permute function from 'heart of darkness' paper`
 |`hf iclass sam          `|N       |`SAM tests`
+
+
+### hf ict
+
+ { ICT MFC/DESfire RFIDs...            }
+
+|command                  |offline |description
+|-------                  |------- |-----------
+|`hf ict help            `|Y       |`This help`
+|`hf ict credential      `|N       |`Read ICT credential and decode`
+|`hf ict info            `|N       |`Tag information`
+|`hf ict list            `|Y       |`List ICT history`
+|`hf ict reader          `|Y       |`Act like an IS14443-a reader`
+
+
+### hf jooki
+
+ { Jooki RFIDs...                      }
+
+|command                  |offline |description
+|-------                  |------- |-----------
+|`hf jooki help          `|Y       |`This help`
+|`hf jooki clone         `|N       |`Write a Jooki token`
+|`hf jooki decode        `|Y       |`Decode Jooki token`
+|`hf jooki encode        `|Y       |`Encode Jooki token`
+|`hf jooki sim           `|N       |`Simulate Jooki token`
+
+
+### hf ksx6924
+
+ { KS X 6924 (T-Money, Snapper+) RFIDs }
+
+|command                  |offline |description
+|-------                  |------- |-----------
+|`hf ksx6924 help        `|Y       |`This help`
+|`hf ksx6924 select      `|N       |`Select application, and leave field up`
+|`hf ksx6924 info        `|N       |`Get info about a KS X 6924 (T-Money, Snapper+) transit card`
+|`hf ksx6924 balance     `|N       |`Get current purse balance`
+|`hf ksx6924 init        `|N       |`Perform transaction initialization with Mpda`
+|`hf ksx6924 prec        `|N       |`Send proprietary get record command (CLA=90, INS=4C)`
 
 
 ### hf legic
@@ -456,8 +469,8 @@ Check column "offline" for their availability.
 |`hf legic wipe          `|N       |`Wipe a LEGIC Prime tag`
 |`hf legic wrbl          `|N       |`Write data to a LEGIC Prime tag`
 |`hf legic sim           `|N       |`Start tag simulator`
-|`hf legic eload         `|N       |`Load binary dump to emulator memory`
-|`hf legic esave         `|N       |`Save emulator memory to binary file`
+|`hf legic eload         `|N       |`Upload file into emulator memory`
+|`hf legic esave         `|N       |`Save emulator memory to file`
 |`hf legic eview         `|N       |`View emulator memory`
 |`hf legic einfo         `|N       |`Display deobfuscated and decoded emulator memory`
 |`hf legic crc           `|Y       |`Calculate Legic CRC over given bytes`
@@ -519,8 +532,8 @@ Check column "offline" for their availability.
 |`hf mf egetblk          `|N       |`Get emulator memory block`
 |`hf mf egetsc           `|N       |`Get emulator memory sector`
 |`hf mf ekeyprn          `|N       |`Print keys from emulator memory`
-|`hf mf eload            `|N       |`Load from file emul dump`
-|`hf mf esave            `|N       |`Save to file emul dump`
+|`hf mf eload            `|N       |`Upload file into emulator memory`
+|`hf mf esave            `|N       |`Save emulator memory to file`
 |`hf mf esetblk          `|N       |`Set emulator memory block`
 |`hf mf eview            `|N       |`View emulator memory`
 |`hf mf cgetblk          `|N       |`Read block from card`
@@ -543,6 +556,7 @@ Check column "offline" for their availability.
 |`hf mf gchpwd           `|N       |`Change card access password. Warning!`
 |`hf mf gdmcfg           `|N       |`Read config block from card`
 |`hf mf gdmsetcfg        `|N       |`Write config block to card`
+|`hf mf gdmparsecfg      `|Y       |`Parse config block to card`
 |`hf mf gdmsetblk        `|N       |`Write block to card`
 |`hf mf ndefformat       `|N       |`Format MIFARE Classic Tag as NFC Tag`
 |`hf mf ndefread         `|N       |`Read and print NDEF records from card`
@@ -584,24 +598,26 @@ Check column "offline" for their availability.
 |-------                  |------- |-----------
 |`hf mfu help            `|Y       |`This help`
 |`hf mfu list            `|Y       |`List MIFARE Ultralight / NTAG history`
-|`hf mfu keygen          `|Y       |`Generate 3DES MIFARE diversified keys`
+|`hf mfu keygen          `|Y       |`Generate DES/3DES/AES MIFARE diversified keys`
 |`hf mfu pwdgen          `|Y       |`Generate pwd from known algos`
 |`hf mfu otptear         `|N       |`Tear-off test on OTP bits`
-|`hf mfu cauth           `|N       |`Authentication - Ultralight-C`
+|`hf mfu cauth           `|N       |`Ultralight-C - Authentication`
+|`hf mfu setpwd          `|N       |`Ultralight-C - Set 3DES key`
 |`hf mfu dump            `|N       |`Dump MIFARE Ultralight family tag to binary file`
 |`hf mfu info            `|N       |`Tag information`
 |`hf mfu ndefread        `|N       |`Prints NDEF records from card`
 |`hf mfu rdbl            `|N       |`Read block`
-|`hf mfu restore         `|N       |`Restore a dump onto a MFU MAGIC tag`
+|`hf mfu restore         `|N       |`Restore a dump file onto a tag`
+|`hf mfu tamper          `|N       |`NTAG 213TT - Configure the tamper feature`
 |`hf mfu view            `|Y       |`Display content from tag dump file`
+|`hf mfu wipe            `|N       |`Wipe card to zeros and default key`
 |`hf mfu wrbl            `|N       |`Write block`
-|`hf mfu tamper          `|N       |`Configure the tamper feature on an NTAG 213TT`
-|`hf mfu eload           `|N       |`Load Ultralight dump file into emulator memory`
-|`hf mfu esave           `|N       |`Save Ultralight dump file from emulator memory`
+|`hf mfu eload           `|N       |`Upload file into emulator memory`
+|`hf mfu esave           `|N       |`Save emulator memory to file`
 |`hf mfu eview           `|N       |`View emulator memory`
 |`hf mfu sim             `|N       |`Simulate MIFARE Ultralight from emulator memory`
-|`hf mfu setpwd          `|N       |`Set 3DES key - Ultralight-C`
 |`hf mfu setuid          `|N       |`Set UID - MAGIC tags only`
+|`hf mfu amiibo          `|N       |`Amiibo tag operations`
 
 
 ### hf mfdes
@@ -611,17 +627,17 @@ Check column "offline" for their availability.
 |command                  |offline |description
 |-------                  |------- |-----------
 |`hf mfdes help          `|Y       |`This help`
-|`hf mfdes info          `|N       |`Tag information`
-|`hf mfdes getuid        `|N       |`Get uid from card`
-|`hf mfdes default       `|N       |`Set defaults for all the commands`
+|`hf mfdes list          `|Y       |`List DESFire (ISO 14443A) history`
 |`hf mfdes auth          `|N       |`MIFARE DesFire Authentication`
 |`hf mfdes chk           `|N       |`Check keys`
+|`hf mfdes default       `|N       |`Set defaults for all the commands`
 |`hf mfdes detect        `|N       |`Detect key type and tries to find one from the list`
-|`hf mfdes freemem       `|N       |`Get free memory size`
-|`hf mfdes setconfig     `|N       |`Set card configuration`
 |`hf mfdes formatpicc    `|N       |`Format PICC`
-|`hf mfdes list          `|Y       |`List DESFire (ISO 14443A) history`
+|`hf mfdes freemem       `|N       |`Get free memory size`
+|`hf mfdes getuid        `|N       |`Get uid from card`
+|`hf mfdes info          `|N       |`Tag information`
 |`hf mfdes mad           `|N       |`Prints MAD records / files from the card`
+|`hf mfdes setconfig     `|N       |`Set card configuration`
 |`hf mfdes lsapp         `|N       |`Show all applications with files list`
 |`hf mfdes getaids       `|N       |`Get Application IDs list`
 |`hf mfdes getappnames   `|N       |`Get Applications list`
@@ -780,6 +796,7 @@ Check column "offline" for their availability.
 |`hf xerox dump          `|N       |`Read all memory pages of an Fuji/Xerox tag, save to file`
 |`hf xerox reader        `|N       |`Act like a Fuji/Xerox reader`
 |`hf xerox view          `|Y       |`Display content from tag dump file`
+|`hf xerox rdbl          `|N       |`Read Fuji/Xerox block`
 
 
 ### hw
@@ -789,26 +806,27 @@ Check column "offline" for their availability.
 |command                  |offline |description
 |-------                  |------- |-----------
 |`hw help                `|Y       |`This help`
-|`hw break               `|N       |`Send break loop usb command`
-|`hw bootloader          `|N       |`Reboot Proxmark3 into bootloader mode`
-|`hw connect             `|Y       |`Connect Proxmark3 to serial port`
-|`hw dbg                 `|N       |`Set Proxmark3 debug level`
 |`hw detectreader        `|N       |`Detect external reader field`
-|`hw fpgaoff             `|N       |`Set FPGA off`
+|`hw status              `|N       |`Show runtime status information about the connected Proxmark3`
+|`hw tearoff             `|N       |`Program a tearoff hook for the next command supporting tearoff`
+|`hw timeout             `|Y       |`Set the communication timeout on the client side`
+|`hw version             `|Y       |`Show version information about the client and Proxmark3`
+|`hw break               `|N       |`Send break loop usb command`
+|`hw bootloader          `|N       |`Reboot into bootloader mode`
+|`hw connect             `|Y       |`Connect to the device via serial port`
+|`hw dbg                 `|N       |`Set device side debug level`
+|`hw fpgaoff             `|N       |`Turn off FPGA on device`
 |`hw lcd                 `|N       |`Send command/data to LCD`
 |`hw lcdreset            `|N       |`Hardware reset LCD`
 |`hw ping                `|N       |`Test if the Proxmark3 is responsive`
-|`hw readmem             `|N       |`Read from processor flash`
-|`hw reset               `|N       |`Reset the Proxmark3`
+|`hw readmem             `|N       |`Read from MCU flash`
+|`hw reset               `|N       |`Reset the device`
 |`hw setlfdivisor        `|N       |`Drive LF antenna at 12MHz / (divisor + 1)`
+|`hw sethfthresh         `|N       |`Set thresholds in HF/14a mode`
 |`hw setmux              `|N       |`Set the ADC mux to a specific value`
-|`hw standalone          `|N       |`Jump to the standalone mode`
-|`hw status              `|N       |`Show runtime status information about the connected Proxmark3`
-|`hw tearoff             `|N       |`Program a tearoff hook for the next command supporting tearoff`
+|`hw standalone          `|N       |`Start installed standalone mode on device`
 |`hw tia                 `|N       |`Trigger a Timing Interval Acquisition to re-adjust the RealTimeCounter divider`
-|`hw timeout             `|Y       |`Set the communication timeout on the client side`
-|`hw tune                `|N       |`Measure antenna tuning`
-|`hw version             `|Y       |`Show version information about the client and the connected Proxmark3, if any`
+|`hw tune                `|N       |`Measure tuning of device antenna`
 
 
 ### lf
@@ -931,12 +949,13 @@ Check column "offline" for their availability.
 |`lf em 4x50 rdbl        `|N       |`Read EM4x50 word data`
 |`lf em 4x50 reader      `|N       |`Show standard read mode data`
 |`lf em 4x50 restore     `|N       |`Restore EM4x50 dump to tag`
+|`lf em 4x50 view        `|Y       |`Display content from tag dump file`
+|`lf em 4x50 wipe        `|N       |`Wipe EM4x50 tag`
 |`lf em 4x50 wrbl        `|N       |`Write EM4x50 word data`
 |`lf em 4x50 wrpwd       `|N       |`Change EM4x50 password`
-|`lf em 4x50 wipe        `|N       |`Wipe EM4x50 tag`
-|`lf em 4x50 eload       `|N       |`Upload EM4x50 dump to emulator memory`
+|`lf em 4x50 eload       `|N       |`Upload file into emulator memory`
 |`lf em 4x50 esave       `|N       |`Save emulator memory to file`
-|`lf em 4x50 eview       `|N       |`View EM4x50 content in emulator memory`
+|`lf em 4x50 eview       `|N       |`View emulator memory`
 |`lf em 4x50 sim         `|N       |`Simulate EM4x50 tag`
 
 
@@ -947,13 +966,15 @@ Check column "offline" for their availability.
 |command                  |offline |description
 |-------                  |------- |-----------
 |`lf em 4x70 help        `|Y       |`This help`
-|`lf em 4x70 brute       `|N       |`Bruteforce EM4X70 to find partial Crypt Key`
+|`lf em 4x70 brute       `|N       |`Bruteforce EM4X70 to find partial key`
 |`lf em 4x70 info        `|N       |`Tag information EM4x70`
 |`lf em 4x70 write       `|N       |`Write EM4x70`
 |`lf em 4x70 unlock      `|N       |`Unlock EM4x70 for writing`
 |`lf em 4x70 auth        `|N       |`Authenticate EM4x70`
-|`lf em 4x70 writepin    `|N       |`Write PIN`
-|`lf em 4x70 writekey    `|N       |`Write Crypt Key`
+|`lf em 4x70 setpin      `|N       |`Write PIN`
+|`lf em 4x70 setkey      `|N       |`Write key`
+|`lf em 4x70 recover     `|Y       |`Recover remaining key from partial key`
+|`lf em 4x70 autorecover `|N       |`Recover entire key from writable tag`
 
 
 ### lf fdxb
@@ -1021,11 +1042,13 @@ Check column "offline" for their availability.
 |`lf hitag info          `|N       |`Hitag 2 tag information`
 |`lf hitag dump          `|N       |`Dump Hitag 2 tag`
 |`lf hitag read          `|N       |`Read Hitag memory`
+|`lf hitag view          `|Y       |`Display content from tag dump file`
 |`lf hitag wrbl          `|N       |`Write a block (page) in Hitag memory`
 |`lf hitag sniff         `|N       |`Eavesdrop Hitag communication`
 |`lf hitag cc            `|N       |`Hitag S: test all provided challenges`
 |`lf hitag ta            `|N       |`Hitag 2: test all recorded authentications`
-|`lf hitag eload         `|N       |`Load Hitag dump file into emulator memory`
+|`lf hitag eload         `|N       |`Upload file into emulator memory`
+|`lf hitag eview         `|N       |`View emulator memory`
 |`lf hitag sim           `|N       |`Simulate Hitag transponder`
 
 
@@ -1435,13 +1458,13 @@ Check column "offline" for their availability.
 |-------                  |------- |-----------
 |`smart help             `|Y       |`This help`
 |`smart list             `|Y       |`List ISO 7816 history`
+|`smart brute            `|N       |`Bruteforce SFI`
 |`smart info             `|N       |`Tag information`
-|`smart relay            `|N       |`Turn pm3 into pcsc reader and relay to host OS via vpcd`
+|`smart pcsc             `|Y       |`Turn pm3 into pcsc reader and relay to host OS via vpcd`
 |`smart reader           `|N       |`Act like an IS07816 reader`
 |`smart raw              `|N       |`Send raw hex data to tag`
 |`smart upgrade          `|Y       |`Upgrade sim module firmware`
 |`smart setclock         `|N       |`Set clock speed`
-|`smart brute            `|N       |`Bruteforce SFI`
 
 
 ### script

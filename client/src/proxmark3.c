@@ -36,6 +36,12 @@
 #include "fileutils.h"
 #include "flash.h"
 #include "preferences.h"
+#include "commonutil.h"
+
+#ifndef _WIN32
+#include <locale.h>
+#endif
+
 
 static int mainret = PM3_ESOFT;
 
@@ -99,6 +105,105 @@ static void showBanner_logo(LogoMode mode) {
     PrintAndLogEx(NORMAL, BANNERMSG3);
 }
 
+static uint8_t detect_current_lang(void) {
+#ifndef _WIN32
+    const char *lang = setlocale(LC_ALL, "");
+    if (lang == NULL) {
+        return 1;
+    }
+    if (memcmp(lang, "fr", 2) == 0) {
+        return 2;
+    }
+    if (memcmp(lang, "es", 2) == 0) {
+        return 3;
+    }
+#endif
+    return 1;
+}
+
+static const char *get_quote(void) {
+
+    const char *quotes_en[] = {
+        "Fund creativity, empower dreams",
+        "Invest in open innovation",
+        "Donate, empower, grow, sustain",
+        "Back global innovation today",
+        "Fuel open source revolution",
+        "Contribute funds, drive progress",
+        "Sponsor innovation, build tomorrow",
+        "Consider supporting: fund innovation",
+        "Your donation fuels progress",
+        "Empower dreams with your support",
+        "Join us: finance creative freedom",
+        "Make an impact: donate today",
+        "Help us drive open innovation",
+        "Your support, our future",
+        "Invest in a better tomorrow",
+        "Every contribution powers change",
+        "Support us, shape the future",
+        "Ignite change: support open-source creativity",
+        "Together, we can innovate without limits",
+    };
+
+    const char *quotes_fr[] = {
+        "Financez la créativité, donnez pouvoir aux rêves",
+        "Investissez dans l'innovation ouverte",
+        "Donnez, habilitez, croissez, soutenez",
+        "Soutenez l'innovation mondiale aujourd'hui",
+        "Alimentez la révolution open source",
+        "Contribuez financièrement, poussez le progrès",
+        "Parrainez l'innovation, construisez demain",
+        "Envisagez de soutenir : financez l'innovation",
+        "Votre don alimente le progrès",
+        "Donnez pouvoir aux rêves avec votre soutien",
+        "Rejoignez-nous : financez la liberté créative",
+        "Faites une différence : donnez aujourd'hui",
+        "Aidez-nous à stimuler l'innovation ouverte",
+        "Votre soutien, notre avenir",
+        "Investissez dans un meilleur demain",
+        "Chaque contribution favorise le changement",
+        "Soutenez-nous, façonnez l'avenir",
+        "Allumez le changement : soutenez la créativité open-source",
+        "Ensemble, nous pouvons innover sans limites",
+    };
+
+    const char *quotes_es[] = {
+        "Financia la creatividad, empodera sueños",
+        "Invierte en innovación abierta",
+        "Dona, empodera, crece, sostén",
+        "Apoya la innovación global hoy",
+        "Impulsa la revolución de código abierto",
+        "Contribuye fondos, impulsa el progreso",
+        "Patrocina la innovación, construye el mañana",
+        "Considera apoyar: financia la innovación",
+        "Tu donación impulsa el progreso",
+        "Empodera sueños con tu apoyo",
+        "Únete a nosotros: financia la libertad creativa",
+        "Haz un impacto: dona hoy",
+        "Ayúdanos a impulsar la innovación abierta",
+        "Tu apoyo, nuestro futuro",
+        "Invierte en un mejor mañana",
+        "Cada contribución impulsa el cambio",
+        "Apóyanos, forma el futuro",
+        "Enciende el cambio: apoya la creatividad de código abierto",
+        "Juntos, podemos innovar sin límites",
+    };
+
+    srand((uint32_t)time(NULL));
+    int r = rand() % ARRAYLEN(quotes_en);
+
+    uint8_t lang = detect_current_lang();
+    switch (lang) {
+        case 2:
+            return quotes_fr[r];
+        case 3:
+            return quotes_es[r];
+        case 1:
+        default:
+            return quotes_en[r];
+    }
+}
+
 static void showBanner(void) {
     uint8_t old_printAndLog = g_printAndLog;
     g_printAndLog &= PRINTANDLOG_PRINT;
@@ -116,10 +221,15 @@ static void showBanner(void) {
 #else
     showBanner_logo(ASCII);
 #endif
-//    PrintAndLogEx(NORMAL, "\nSupport iceman on patreon - https://www.patreon.com/iceman1001/");
-//    PrintAndLogEx(NORMAL, "                 on paypal - https://www.paypal.me/iceman1001");
-//    PrintAndLogEx(NORMAL, "\nMonero: 43mNJLpgBVaTvyZmX9ajcohpvVkaRy1kbZPm8tqAb7itZgfuYecgkRF36rXrKFUkwEGeZedPsASRxgv4HPBHvJwyJdyvQuP");
-//    PrintAndLogEx(NORMAL, "");
+
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(NORMAL, "  [ " _YELLOW_("%s!")" ]", get_quote());
+    PrintAndLogEx(NORMAL, "     Patreon - https://www.patreon.com/iceman1001/");
+    PrintAndLogEx(NORMAL, "     Paypal  - https://www.paypal.me/iceman1001/");
+    PrintAndLogEx(NORMAL, "");
+//    PrintAndLogEx(NORMAL, "   Monero");
+//    PrintAndLogEx(NORMAL, " 43mNJLpgBVaTvyZmX9ajcohpvVkaRy1kbZPm8tqAb7itZgfuYecgkRF36rXrKFUkwEGeZedPsASRxgv4HPBHvJwyJdyvQuP");
+    PrintAndLogEx(NORMAL, "");
     fflush(stdout);
     g_printAndLog = old_printAndLog;
 }
@@ -683,7 +793,6 @@ static int dumpmem_to_file(const char *filename, uint32_t addr, uint32_t len, bo
     }
 
     if (res == PM3_SUCCESS) {
-        PrintAndLogEx(INFO, "saving to "_YELLOW_("%s"), filename);
         if (saveFile(filename, ".bin", buffer, read) != 0) {
             PrintAndLogEx(ERR, "error writing to file "_YELLOW_("%s"), filename);
             res = PM3_EFILE;
@@ -725,16 +834,15 @@ static int dumpmem_pm3(char *serial_port_name, const char *filename, uint32_t ad
     if (in_bootloader) {
         if ((dev_info & DEVICE_INFO_FLAG_UNDERSTANDS_READ_MEM) != 0) {
             PrintAndLogEx(INFO, "Device is running the bootloader.");
-        }
-        else {
+        } else {
             PrintAndLogEx(ERR, "Device is running the bootloader, but the bootloader"
-                " doesn't understand the READ MEM command.");
+                          " doesn't understand the READ MEM command.");
             goto finish2;
         }
     }
 
-    PrintAndLogEx(SUCCESS,"Dump requested from address "_YELLOW_("%u")", length "_YELLOW_("%u")"%s.",
-        addr, len, raw ? ", in raw address mode" : "");
+    PrintAndLogEx(SUCCESS, "Dump requested from address "_YELLOW_("%u")", length "_YELLOW_("%u")"%s.",
+                  addr, len, raw ? ", in raw address mode" : "");
 
     PrintAndLogEx(SUCCESS, _CYAN_("Memory dumping to file..."));
     ret = dumpmem_to_file(filename, addr, len, raw, in_bootloader);
@@ -919,7 +1027,7 @@ int main(int argc, char *argv[]) {
     bool dumpmem_mode = false;
     const char *dumpmem_filename = NULL;
     uint32_t dumpmem_addr = 0;
-    uint32_t dumpmem_len = 512*1024;
+    uint32_t dumpmem_len = 512 * 1024;
     bool dumpmem_raw = false;
 
     // color management:
@@ -1139,7 +1247,7 @@ int main(int argc, char *argv[]) {
                 show_help(false, exec_name);
                 return 1;
             }
-            uint32_t tmpaddr = strtol(argv[i + 1], NULL, 10);
+            uint32_t tmpaddr = strtoul(argv[i + 1], NULL, 0);
             dumpmem_addr = tmpaddr;
             i++;
             continue;
@@ -1150,7 +1258,7 @@ int main(int argc, char *argv[]) {
                 show_help(false, exec_name);
                 return 1;
             }
-            uint32_t tmplen = strtol(argv[i + 1], NULL, 10);
+            uint32_t tmplen = strtoul(argv[i + 1], NULL, 0);
             dumpmem_len = tmplen;
             i++;
             continue;

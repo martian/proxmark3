@@ -365,7 +365,7 @@ int applyIso14443a(char *exp, size_t size, uint8_t *cmd, uint8_t cmdsize, bool i
                 break;
             case MIFARE_ULEV1_AUTH:
                 if (cmdsize == 7)
-                    snprintf(exp, size, "PWD-AUTH KEY: " _GREEN_("0x%02X%02X%02X%02X"), cmd[1], cmd[2], cmd[3], cmd[4]);
+                    snprintf(exp, size, "PWD-AUTH: " _GREEN_("0x%02X%02X%02X%02X"), cmd[1], cmd[2], cmd[3], cmd[4]);
                 else
                     snprintf(exp, size, "PWD-AUTH");
                 break;
@@ -1572,6 +1572,41 @@ void annotateMfPlus(char *exp, size_t size, uint8_t *cmd, uint8_t cmdsize) {
 0A 11 22 33 44 55 66 = Authenticate (11 22 33 44 55 66 = data to authenticate)
 **/
 void annotateIso14443b(char *exp, size_t size, uint8_t *cmd, uint8_t cmdsize) {
+
+    // xerox anti collison loop / slot select for uid bytes...
+    if (cmdsize == 1) {
+        switch (cmd[0]) {
+            case 0xB1:
+                snprintf(exp, size, "Slot 0 ACK");
+                return;
+            case 0xB3:
+                snprintf(exp, size, "Slot 1 ACK");
+                return;
+            case 0xB5:
+                snprintf(exp, size, "Slot 2 ACK");
+                return;
+            case 0xB7:  {
+                snprintf(exp, size, "Slot 3 ACK");
+                return;
+            }
+            case 0xA1:
+                snprintf(exp, size, "Slot 0 NACK");
+                return;
+            case 0xA3:
+                snprintf(exp, size, "Slot 1 NACK");
+                return;
+            case 0xA5:
+                snprintf(exp, size, "Slot 2 NACK");
+                return;
+            case 0xA7:  {
+                snprintf(exp, size, "Slot 0 NACK");
+                return;
+            }
+            default:
+                break;
+        }
+    }
+
     switch (cmd[0]) {
         case ISO14443B_REQB : {
 
@@ -1634,6 +1669,30 @@ void annotateIso14443b(char *exp, size_t size, uint8_t *cmd, uint8_t cmdsize) {
         case ISO14443B_PONG:
             snprintf(exp, size, "PONG");
             break;
+        case 0x02:
+            if (cmdsize == 17 && cmd[1] == ISO14443B_XEROX_PWD) {
+                snprintf(exp, size, "XEROX PWD");
+                break;
+            }
+            if (cmdsize == 13 && cmd[1] == ISO14443B_XEROX_READ_BLK) {
+                snprintf(exp, size, "XEROX READ_BLK(%u)", cmd[2 + 8]);
+                break;
+            }
+            if (cmdsize == 13 && cmd[1] == ISO14443B_XEROX_EXT_READ_BLK) {
+                snprintf(exp, size, "XEROX EXT_READ_BLK(%u)", cmd[2 + 8]);
+                break;
+            }
+
+        case ISO14443B_XEROX_WUP1:
+            if (cmdsize == 5) {
+                snprintf(exp, size, "XEROX WUP1");
+                break;
+            }
+        case ISO14443B_XEROX_WUP2:
+            if (cmdsize == 5) {
+                snprintf(exp, size, "XEROX WUP1");
+                break;
+            }
         default:
             snprintf(exp, size, "?");
             break;
@@ -2044,9 +2103,9 @@ void annotateMifare(char *exp, size_t size, uint8_t *cmd, uint8_t cmdsize,
             break;
     }
 
-    if ((MifareAuthState == masNone) || (MifareAuthState == masError))
+    if ((MifareAuthState == masNone) || (MifareAuthState == masError)) {
         annotateIso14443a(exp, size, cmd, cmdsize, isResponse);
-
+    }
 }
 
 static void mf_get_paritybinstr(char *s, uint32_t val, uint8_t par) {

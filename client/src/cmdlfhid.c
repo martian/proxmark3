@@ -473,14 +473,13 @@ static int CmdHIDClone(const char *Cmd) {
     PacketResponseNG resp;
     WaitForResponse(CMD_LF_HID_CLONE, &resp);
     if (resp.status == PM3_SUCCESS) {
-        PrintAndLogEx(INFO, "Done");
+        PrintAndLogEx(HINT, "Hint: try " _YELLOW_("`lf hid reader`") " to verify");
+        PrintAndLogEx(INFO, "Done!");
     } else {
-        PrintAndLogEx(FAILED, "Failed cloning");
-        return resp.status;
-    }
+        PrintAndLogEx(FAILED, "cloning ( " _RED_("fail") " )");
 
-    PrintAndLogEx(HINT, "Hint: try " _YELLOW_("`lf hid reader`") " to verify");
-    return PM3_SUCCESS;
+    }
+    return resp.status;
 }
 
 /*
@@ -592,7 +591,7 @@ static int CmdHIDBrute(const char *Cmd) {
     }
     PrintAndLogEx(NORMAL, "");
     PrintAndLogEx(INFO, "Started bruteforcing HID Prox reader");
-    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or press " _GREEN_("<Enter>") " to abort simulation");
+    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or " _GREEN_("<Enter>") " to abort simulation");
     PrintAndLogEx(NORMAL, "");
     // copy values to low.
     card_low = card_hi;
@@ -680,7 +679,7 @@ static command_t CommandTable[] = {
     {"help",    CmdHelp,        AlwaysAvailable, "this help"},
     {"demod",   CmdHIDDemod,    AlwaysAvailable, "demodulate HID Prox tag from the GraphBuffer"},
     {"reader",  CmdHIDReader,   IfPm3Lf,         "attempt to read and extract tag data"},
-    {"clone",   CmdHIDClone,    IfPm3Lf,         "clone HID tag to T55x7"},
+    {"clone",   CmdHIDClone,    IfPm3Lf,         "clone HID tag to T55x7, Q5/T5555 or EM4305/4469"},
     {"sim",     CmdHIDSim,      IfPm3Lf,         "simulate HID tag"},
     {"brute",   CmdHIDBrute,    IfPm3Lf,         "bruteforce facility code or card number against reader"},
     {"watch",   CmdHIDWatch,    IfPm3Lf,         "continuously watch for cards.  Reader mode"},

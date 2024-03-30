@@ -581,6 +581,11 @@ static bool send_command_and_read(uint8_t command, uint8_t *bytes, size_t length
                 Dbprintf("Invalid data received length: %d, expected %d", len, out_length_bits);
                 return false;
             }
+            // TODO: Figure out why getting an extra bit (quite often) here
+            // e.g., write block and info commands both reach here and output:
+            // [#] Should have a multiple of 8 bits, was sent 33
+            // [#] Should have a multiple of 8 bits, was sent 65
+            // Extra bits are currently just dropped, with no ill effect noticed.
             bits2bytes(bits, len, bytes);
             return true;
         }
@@ -682,11 +687,15 @@ static int em4x70_receive(uint8_t *bits, size_t length) {
             // pulse length 1.5 -> 2 bits + flip edge detection
             if (edge == FALLING_EDGE) {
                 bits[bit_pos++] = 0;
-                bits[bit_pos++] = 0;
+                if (bit_pos < length) {
+                    bits[bit_pos++] = 0;
+                }
                 edge = RISING_EDGE;
             } else {
                 bits[bit_pos++] = 1;
-                bits[bit_pos++] = 1;
+                if (bit_pos < length) {
+                    bits[bit_pos++] = 1;
+                }
                 edge = FALLING_EDGE;
             }
 
@@ -695,10 +704,14 @@ static int em4x70_receive(uint8_t *bits, size_t length) {
             // pulse length of 2 -> two bits
             if (edge == FALLING_EDGE) {
                 bits[bit_pos++] = 0;
-                bits[bit_pos++] = 1;
+                if (bit_pos < length) {
+                    bits[bit_pos++] = 1;
+                }
             } else {
                 bits[bit_pos++] = 1;
-                bits[bit_pos++] = 0;
+                if (bit_pos < length) {
+                    bits[bit_pos++] = 0;
+                }
             }
 
         } else {
@@ -874,7 +887,7 @@ void em4x70_write_pin(const em4x70_data_t *etd, bool ledcontrol) {
 
     StopTicks();
     lf_finalize(ledcontrol);
-    reply_ng(CMD_LF_EM4X70_WRITEPIN, status, tag.data, sizeof(tag.data));
+    reply_ng(CMD_LF_EM4X70_SETPIN, status, tag.data, sizeof(tag.data));
 }
 
 void em4x70_write_key(const em4x70_data_t *etd, bool ledcontrol) {
@@ -903,14 +916,16 @@ void em4x70_write_key(const em4x70_data_t *etd, bool ledcontrol) {
                     break;
                 }
             }
-            // TODO: Ideally here we would perform a test authentication
-            //       to ensure the new key was written correctly. This is
-            //       what the datasheet suggests. We can't do that until
-            //       we have the crypto algorithm implemented.
+            // The client now has support for test authentication after
+            // writing a new key, thus allowing to verify that the new
+            // key was written correctly.  This is what the datasheet
+            // suggests.   Not currently implemented in the firmware,
+            // although ID48LIB has no dependencies that would prevent
+            // use within the firmware layer.
         }
     }
 
     StopTicks();
     lf_finalize(ledcontrol);
-    reply_ng(CMD_LF_EM4X70_WRITEKEY, status, tag.data, sizeof(tag.data));
+    reply_ng(CMD_LF_EM4X70_SETKEY, status, tag.data, sizeof(tag.data));
 }

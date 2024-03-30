@@ -284,9 +284,10 @@ static int CmdVisa2kSim(const char *Cmd) {
     PacketResponseNG resp;
     WaitForResponse(CMD_LF_ASK_SIMULATE, &resp);
 
-    PrintAndLogEx(INFO, "Done");
-    if (resp.status != PM3_EOPABORTED)
+    PrintAndLogEx(INFO, "Done!");
+    if (resp.status != PM3_EOPABORTED) {
         return resp.status;
+    }
     return PM3_SUCCESS;
 }
 
@@ -294,7 +295,7 @@ static command_t CommandTable[] = {
     {"help",    CmdHelp,         AlwaysAvailable, "This help"},
     {"demod",   CmdVisa2kDemod,  AlwaysAvailable, "demodulate an VISA2000 tag from the GraphBuffer"},
     {"reader",  CmdVisa2kReader, IfPm3Lf,         "attempt to read and extract tag data"},
-    {"clone",   CmdVisa2kClone,  IfPm3Lf,         "clone Visa2000 tag to T55x7 or Q5/T5555"},
+    {"clone",   CmdVisa2kClone,  IfPm3Lf,         "clone Visa2000 tag to T55x7, Q5/T5555 or EM4305/4469"},
     {"sim",     CmdVisa2kSim,    IfPm3Lf,         "simulate Visa2000 tag"},
     {NULL, NULL, NULL, NULL}
 };

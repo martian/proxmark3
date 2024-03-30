@@ -393,7 +393,7 @@ int desfire_print_signature(uint8_t *uid, uint8_t uidlen, uint8_t *signature, si
         {"NTAG424DNA, NTAG424DNATT, DESFire Light Ev2", "04B304DC4C615F5326FE9383DDEC9AA892DF3A57FA7FFB3276192BC0EAA252ED45A865E3B093A3D0DCE5BE29E92F1392CE7DE321E3E5C52B3B"},
         {"DESFire Light",   "040E98E117AAA36457F43173DC920A8757267F44CE4EC5ADD3C54075571AEBBF7B942A9774A1D94AD02572427E5AE0A2DD36591B1FB34FCF3D"},
         {"MIFARE Plus Ev1", "044409ADC42F91A8394066BA83D872FB1D16803734E911170412DDF8BAD1A4DADFD0416291AFE1C748253925DA39A5F39A1C557FFACD34C62E"},
-        {"MIFARE Plus EvX", "04BB49AE4447E6B1B6D21C098C1538B594A11A4A1DBF3D5E673DEACDEB3CC512D1C08AFA1A2768CE20A200BACD2DC7804CD7523A0131ABF607"},
+        {"MIFARE Plus Ev2", "04BB49AE4447E6B1B6D21C098C1538B594A11A4A1DBF3D5E673DEACDEB3CC512D1C08AFA1A2768CE20A200BACD2DC7804CD7523A0131ABF607"},
         {"DESFire Ev2 XL",  "04CD5D45E50B1502F0BA4656FF37669597E7E183251150F9574CC8DA56BF01C7ABE019E29FEA48F9CE22C3EA4029A765E1BC95A89543BAD1BC"},
         {"MIFARE Plus Troika", "040F732E0EA7DF2B38F791BF89425BF7DCDF3EE4D976669E3831F324FF15751BD52AFF1782F72FF2731EEAD5F63ABE7D126E03C856FFB942AF"},
     };
@@ -1755,13 +1755,17 @@ static int CmdHF14aDesMAD(const char *Cmd) {
     AppListS AppList = {{0}};
     DesfireFillAppList(&dctx, &PICCInfo, AppList, false, false, false); // no deep scan, no scan files
 
-    if (PICCInfo.freemem == 0xffffffff)
-        PrintAndLogEx(SUCCESS, "Applications count: " _GREEN_("%zu") " free memory " _YELLOW_("n/a"), PICCInfo.appCount);
-    else
-        PrintAndLogEx(SUCCESS, "Applications count: " _GREEN_("%zu") " free memory " _GREEN_("%d") " bytes", PICCInfo.appCount, PICCInfo.freemem);
+    PrintAndLogEx(SUCCESS, "# Applications... " _GREEN_("%zu"), PICCInfo.appCount);
+    if (PICCInfo.freemem == 0xffffffff) {
+        PrintAndLogEx(SUCCESS, "Free memory...... " _YELLOW_("n/a"));
+    } else {
+        PrintAndLogEx(SUCCESS, "Free memory...... " _GREEN_("%d") " bytes", PICCInfo.freemem);
+    }
 
-    if ((PICCInfo.keySettings & (1 << 1)) == 0)
-        PrintAndLogEx(WARNING, "Directory list access with CMK : " _RED_("Enabled") ". Try to read mad with Card Master Key(");
+    if ((PICCInfo.keySettings & (1 << 1)) == 0) {
+        PrintAndLogEx(WARNING, "Directory list access with CMK... ( " _RED_("Enabled") " )");
+        PrintAndLogEx(HINT, "Try to read MAD with Card Master Key (CMK)");
+    }
 
     PrintAndLogEx(SUCCESS, "----------------------------------------- " _CYAN_("MAD") " ------------------------------------------");
     bool foundFFFFFF = false;
@@ -2657,7 +2661,7 @@ static int CmdHF14ADesDeleteApp(const char *Cmd) {
         arg_str0("m",  "cmode",   "<plain|mac|encrypt>", "Communicaton mode"),
         arg_str0("c",  "ccset",   "<native|niso|iso>", "Communicaton command set"),
         arg_str0(NULL, "schann",  "<d40|ev1|ev2|lrp>", "Secure channel"),
-        arg_str0(NULL, "aid",     "<hex>", "Application ID of delegated application (3 hex bytes, big endian)"),
+        arg_str0(NULL, "aid",     "<hex>", "Application ID to delete (3 hex bytes, big endian)"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -2682,7 +2686,7 @@ static int CmdHF14ADesDeleteApp(const char *Cmd) {
         return PM3_ESOFT;
     }
 
-    res = DesfireSelectAndAuthenticate(&dctx, securechann, appid, verbose);
+    res = DesfireSelectAndAuthenticate(&dctx, securechann, 0x000000, verbose);
     if (res != PM3_SUCCESS) {
         DropField();
         return res;
@@ -5682,18 +5686,18 @@ static int CmdHF14ADesTest(const char *Cmd) {
 
 static command_t CommandTable[] = {
     {"help",             CmdHelp,                     AlwaysAvailable, "This help"},
-    {"-----------",      CmdHelp,                     IfPm3Iso14443a,  "---------------------- " _CYAN_("general") " ----------------------"},
-    {"info",             CmdHF14ADesInfo,             IfPm3Iso14443a,  "Tag information"},
-    {"getuid",           CmdHF14ADesGetUID,           IfPm3Iso14443a,  "Get uid from card"},
-    {"default",          CmdHF14ADesDefault,          IfPm3Iso14443a,  "Set defaults for all the commands"},
+    {"list",             CmdHF14ADesList,             AlwaysAvailable, "List DESFire (ISO 14443A) history"},
+    {"-----------",      CmdHelp,                     IfPm3Iso14443a,  "---------------------- " _CYAN_("General") " ----------------------"},
     {"auth",             CmdHF14ADesAuth,             IfPm3Iso14443a,  "MIFARE DesFire Authentication"},
     {"chk",              CmdHF14aDesChk,              IfPm3Iso14443a,  "Check keys"},
+    {"default",          CmdHF14ADesDefault,          IfPm3Iso14443a,  "Set defaults for all the commands"},
     {"detect",           CmdHF14aDesDetect,           IfPm3Iso14443a,  "Detect key type and tries to find one from the list"},
-    {"freemem",          CmdHF14ADesGetFreeMem,       IfPm3Iso14443a,  "Get free memory size"},
-    {"setconfig",        CmdHF14ADesSetConfiguration, IfPm3Iso14443a,  "Set card configuration"},
     {"formatpicc",       CmdHF14ADesFormatPICC,       IfPm3Iso14443a,  "Format PICC"},
-    {"list",             CmdHF14ADesList,             AlwaysAvailable, "List DESFire (ISO 14443A) history"},
+    {"freemem",          CmdHF14ADesGetFreeMem,       IfPm3Iso14443a,  "Get free memory size"},
+    {"getuid",           CmdHF14ADesGetUID,           IfPm3Iso14443a,  "Get uid from card"},
+    {"info",             CmdHF14ADesInfo,             IfPm3Iso14443a,  "Tag information"},
     {"mad",              CmdHF14aDesMAD,              IfPm3Iso14443a,  "Prints MAD records / files from the card"},
+    {"setconfig",        CmdHF14ADesSetConfiguration, IfPm3Iso14443a,  "Set card configuration"},
     {"-----------",      CmdHelp,                     IfPm3Iso14443a,  "-------------------- " _CYAN_("Applications") " -------------------"},
     {"lsapp",            CmdHF14ADesLsApp,            IfPm3Iso14443a,  "Show all applications with files list"},
     {"getaids",          CmdHF14ADesGetAIDs,          IfPm3Iso14443a,  "Get Application IDs list"},

@@ -42,18 +42,15 @@ typedef struct {
     uint8_t data[1024];
 } PACKED old_mfu_dump_t;
 
-uint32_t GetHF14AMfU_Type(void);
+uint64_t GetHF14AMfU_Type(void);
 int ul_print_type(uint64_t tagtype, uint8_t spaces);
-void printMFUdumpEx(mfu_dump_t *card, uint16_t pages, uint8_t startpage, bool dense_output);
+void mfu_print_dump(mfu_dump_t *card, uint16_t pages, uint8_t startpage, bool dense_output);
 int ul_read_uid(uint8_t *uid);
 int trace_mfuc_try_default_3des_keys(uint8_t **correct_key, int state, uint8_t (*authdata)[16]);
 
 int CmdHFMFUltra(const char *Cmd);
 int CmdHF14MfuNDEFRead(const char *Cmd);
 int CmdHF14MfUTamper(const char *Cmd);
-
-uint16_t ul_ev1_packgen_VCNEW(uint8_t *uid, uint32_t pwd);
-uint32_t ul_ev1_otpgenA(uint8_t *uid);
 
 #define MFU_TT_UNKNOWN          0x0ULL
 #define MFU_TT_UL               0x1ULL

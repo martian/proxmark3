@@ -1787,7 +1787,7 @@ static int CmdHFFelicaSniff(const char *Cmd) {
 
 
     PrintAndLogEx(INFO, "Sniff Felica,  getting first %" PRIu32 " frames, skipping after %" PRIu32 " triggers", payload.samples,   payload.triggers);
-    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or press " _GREEN_("<Enter>") " to abort sniffing");
+    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or " _GREEN_("<Enter>") " to abort sniffing");
     clearCommandBuffer();
     SendCommandNG(CMD_HF_FELICA_SNIFF, (uint8_t *)&payload, sizeof(payload));
     PacketResponseNG resp;
@@ -1809,7 +1809,7 @@ static int CmdHFFelicaSniff(const char *Cmd) {
     }
 
     PrintAndLogEx(HINT, "try `" _YELLOW_("hf felica list") "` to view");
-    PrintAndLogEx(INFO, "Done");
+    PrintAndLogEx(INFO, "Done!");
     return PM3_SUCCESS;
 }
 
@@ -1834,7 +1834,7 @@ static int CmdHFFelicaSimLite(const char *Cmd) {
     CLIParserFree(ctx);
 
     PrintAndLogEx(NORMAL, "");
-    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or press " _GREEN_("<Enter>") " to abort simulation");
+    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or " _GREEN_("<Enter>") " to abort simulation");
 
     clearCommandBuffer();
     SendCommandNG(CMD_HF_FELICALITE_SIMULATE, payload.uid, sizeof(payload));
@@ -1856,7 +1856,7 @@ static int CmdHFFelicaSimLite(const char *Cmd) {
         }
     }
 
-    PrintAndLogEx(INFO, "Done");
+    PrintAndLogEx(INFO, "Done!");
     return PM3_SUCCESS;
 }
 
@@ -2039,7 +2039,7 @@ static int CmdHFFelicaDumpLite(const char *Cmd) {
     SendCommandNG(CMD_HF_FELICALITE_DUMP, NULL, 0);
     PacketResponseNG resp;
 
-    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or press " _GREEN_("<Enter>") " to abort dumping");
+    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or " _GREEN_("<Enter>") " to abort dumping");
 
     uint8_t timeout = 0;
     while (WaitForResponseTimeout(CMD_ACK, &resp, 2000) == false) {
@@ -2189,9 +2189,10 @@ static int CmdHFFelicaCmdRaw(const char *Cmd) {
 }
 
 static command_t CommandTable[] = {
+    {"-----------",     CmdHelp,                          AlwaysAvailable, "----------------------- " _CYAN_("General") " -----------------------"},
     {"help",            CmdHelp,                          AlwaysAvailable, "This help"},
     {"list",            CmdHFFelicaList,                  AlwaysAvailable, "List ISO 18092/FeliCa history"},
-    {"-----------",     CmdHelp,                          AlwaysAvailable, "----------------------- " _CYAN_("General") " -----------------------"},
+    {"-----------",     CmdHelp,                          AlwaysAvailable, "----------------------- " _CYAN_("Operations") " -----------------------"},
     {"info",            CmdHFFelicaInfo,                  IfPm3Felica,     "Tag information"},
     {"raw",             CmdHFFelicaCmdRaw,                IfPm3Felica,     "Send raw hex data to tag"},
     {"rdbl",            CmdHFFelicaReadPlain,             IfPm3Felica,     "read block data from authentication-not-required Service."},

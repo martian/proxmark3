@@ -336,6 +336,7 @@ set (TARGET_SOURCES
         ${PM3_ROOT}/client/src/cmdhfgallagher.c
         ${PM3_ROOT}/client/src/cmdhfcipurse.c
         ${PM3_ROOT}/client/src/cmdhficlass.c
+        ${PM3_ROOT}/client/src/cmdhfict.c
         ${PM3_ROOT}/client/src/cmdhfjooki.c
         ${PM3_ROOT}/client/src/cmdhfksx6924.c
         ${PM3_ROOT}/client/src/cmdhflegic.c
@@ -518,14 +519,14 @@ if (LZ4_FOUND)
 endif (LZ4_FOUND)
 
 if (NOT SKIPGD EQUAL 1 AND GD_FOUND)
-	set(ADDITIONAL_DIRS ${GD_INCLUDE_DIRS} ${ADDITIONAL_DIRS})
-	set(ADDITIONAL_LNK ${GD_LIBRARIES} ${ADDITIONAL_LNK})
-	set(ADDITIONAL_LNKDIRS ${GD_LIBRARY_DIRS} ${ADDITIONAL_LNKDIRS})
-	set(TARGET_SOURCES
-			${PM3_ROOT}/client/src/imgutils.c
-			${PM3_ROOT}/client/src/cmdhfwaveshare.c
-			${TARGET_SOURCES})
-	add_definitions("-DHAVE_GD")
+    set(ADDITIONAL_DIRS ${GD_INCLUDE_DIRS} ${ADDITIONAL_DIRS})
+    set(ADDITIONAL_LNK ${GD_LIBRARIES} ${ADDITIONAL_LNK})
+    set(ADDITIONAL_LNKDIRS ${GD_LIBRARY_DIRS} ${ADDITIONAL_LNKDIRS})
+    set(TARGET_SOURCES
+            ${PM3_ROOT}/client/src/imgutils.c
+            ${PM3_ROOT}/client/src/cmdhfwaveshare.c
+            ${TARGET_SOURCES})
+    add_definitions("-DHAVE_GD")
 endif (NOT SKIPGD EQUAL 1 AND GD_FOUND)
 
 if (WHEREAMI_FOUND)
@@ -757,6 +758,7 @@ target_link_libraries(proxmark3 PRIVATE
         pm3rrg_rdv4_amiibo
         pm3rrg_rdv4_reveng
         pm3rrg_rdv4_hardnested
+        pm3rrg_rdv4_id48
         ${ADDITIONAL_LNK})
 
 if (NOT SKIPPTHREAD EQUAL 1)

@@ -22,7 +22,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "cmdparser.h"    // command_t
+#include "cmdparser.h"      // command_t
 #include "cliparser.h"
 #include "comms.h"
 #include "usart_defs.h"
@@ -33,11 +33,13 @@
 #include "commonutil.h"
 #include "preferences.h"
 #include "pm3_cmd.h"
-#include "pmflash.h"      // rdv40validation_t
-#include "cmdflashmem.h"  // get_signature..
-#include "uart/uart.h" // configure timeout
+#include "pmflash.h"        // rdv40validation_t
+#include "cmdflashmem.h"    // get_signature..
+#include "uart/uart.h"      // configure timeout
 #include "util_posix.h"
-#include "flash.h" // reboot to bootloader mode
+#include "flash.h"          // reboot to bootloader mode
+#include "proxgui.h"
+#include "graph.h"          // for graph data
 
 static int CmdHelp(const char *Cmd);
 
@@ -529,13 +531,14 @@ static int CmdDetectReader(const char *Cmd) {
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hw detectreader",
                   "Start to detect presences of reader field",
+                  "hw detectreader\n"
                   "hw detectreader -L\n"
                  );
 
     void *argtable[] = {
         arg_param_begin,
-        arg_lit0("L", "LF", "detect low frequency 125/134 kHz"),
-        arg_lit0("H", "HF", "detect high frequency 13.56 MHZ"),
+        arg_lit0("L", "LF", "only detect low frequency 125/134 kHz"),
+        arg_lit0("H", "HF", "only detect high frequency 13.56 MHZ"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -543,20 +546,35 @@ static int CmdDetectReader(const char *Cmd) {
     bool hf = arg_get_lit(ctx, 2);
     CLIParserFree(ctx);
 
-    if ((lf + hf) > 1) {
-        PrintAndLogEx(INFO, "Can only set one frequency");
-        return PM3_EINVARG;
+    // 0: Detect both frequency in mode 1
+    // 1: LF_ONLY
+    // 2: HF_ONLY
+    uint8_t arg = 0;
+    if (lf == true && hf == false) {
+        arg = 1;
+    } else if (hf == true && lf == false) {
+        arg = 2;
     }
 
-    uint8_t arg = 0;
-    if (lf)
-        arg = 1;
-    else if (hf)
-        arg = 2;
-
-    PrintAndLogEx(INFO, "press pm3 button to change modes and finally exit");
     clearCommandBuffer();
     SendCommandNG(CMD_LISTEN_READER_FIELD, (uint8_t *)&arg, sizeof(arg));
+    PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or " _GREEN_("<Enter>") " to change modes and exit");
+
+    for (;;) {
+        if (kbd_enter_pressed()) {
+            SendCommandNG(CMD_BREAK_LOOP, NULL, 0);
+            PrintAndLogEx(DEBUG, _GREEN_("<Enter>") " pressed");
+        }
+
+        PacketResponseNG resp;
+        if (WaitForResponseTimeout(CMD_LISTEN_READER_FIELD, &resp, 1000)) {
+            if (resp.status != PM3_EOPABORTED) {
+                PrintAndLogEx(ERR, "Unexpected response: %d", resp.status);
+            }
+            break;
+        }
+    }
+    PrintAndLogEx(INFO, "Done!");
     return PM3_SUCCESS;
 }
 
@@ -640,10 +658,10 @@ static int CmdReadmem(const char *Cmd) {
 
     void *argtable[] = {
         arg_param_begin,
-        arg_int0("a", "adr", "<dec>", "flash address to start reading from"),
-        arg_int0("l", "len", "<dec>", "length (default 32 or 512KB)"),
+        arg_u64_0("a", "adr", "<dec>", "flash address to start reading from"),
+        arg_u64_0("l", "len", "<dec>", "length (default 32 or 512KB)"),
         arg_str0("f", "file", "<fn>", "save to file"),
-        arg_int0("c", "cols", "<dec>", "column breaks"),
+        arg_u64_0("c", "cols", "<dec>", "column breaks"),
         arg_lit0("r", "raw", "use raw address mode: read from anywhere, not just flash"),
         arg_param_end
     };
@@ -656,7 +674,7 @@ static int CmdReadmem(const char *Cmd) {
     bool save_to_file = fnlen > 0;
 
     // default len to 512KB when saving to file, to 32 bytes when viewing on the console.
-    uint32_t default_len = save_to_file ? 512*1024 : 32;
+    uint32_t default_len = save_to_file ? 512 * 1024 : 32;
 
     uint32_t address = arg_get_u32_def(ctx, 1, 0);
     uint32_t len = arg_get_u32_def(ctx, 2, default_len);
@@ -672,7 +690,7 @@ static int CmdReadmem(const char *Cmd) {
 
     const char *flash_str = raw ? "" : " flash";
     PrintAndLogEx(INFO, "reading "_YELLOW_("%u")" bytes from processor%s memory",
-        len, flash_str);
+                  len, flash_str);
 
     DeviceMemType_t type = raw ? MCU_MEM : MCU_FLASH;
     if (!GetFromDevice(type, buffer, len, address, NULL, 0, NULL, -1, true)) {
@@ -682,7 +700,6 @@ static int CmdReadmem(const char *Cmd) {
     }
 
     if (save_to_file) {
-        PrintAndLogEx(INFO, "saving to "_YELLOW_("%s"), filename);
         saveFile(filename, ".bin", buffer, len);
     } else {
         PrintAndLogEx(INFO, "---- " _CYAN_("processor%s memory") " ----", flash_str);
@@ -741,6 +758,45 @@ static int CmdSetDivisor(const char *Cmd) {
     clearCommandBuffer();
     SendCommandNG(CMD_LF_SET_DIVISOR, (uint8_t *)&arg, sizeof(arg));
     PrintAndLogEx(SUCCESS, "Divisor set, expected " _YELLOW_("%.1f")" kHz", ((double)12000 / (arg + 1)));
+    return PM3_SUCCESS;
+}
+
+static int CmdSetHFThreshold(const char *Cmd) {
+
+    CLIParserContext *ctx;
+    CLIParserInit(&ctx, "hw sethfthresh",
+                  "Set thresholds in HF/14a and Legic mode.",
+                  "hw sethfthresh -t 7 -i 20 -l 8"
+                 );
+
+    void *argtable[] = {
+        arg_param_begin,
+        arg_int0("t", "thresh", "<dec>", "threshold, used in 14a reader mode (def 7)"),
+        arg_int0("i", "high", "<dec>", "high threshold, used in 14a sniff mode (def 20)"),
+        arg_int0("l", "legic", "<dec>", "threshold used in Legic mode (def 8)"),
+        arg_param_end
+    };
+    CLIExecWithReturn(ctx, Cmd, argtable, true);
+
+    struct {
+        uint8_t threshold;
+        uint8_t threshold_high;
+        uint8_t legic_threshold;
+    } PACKED params;
+
+    params.threshold = arg_get_int_def(ctx, 1, 7);
+    params.threshold_high = arg_get_int_def(ctx, 2, 20);
+    params.legic_threshold = arg_get_int_def(ctx, 3, 8);
+    CLIParserFree(ctx);
+
+    if ((params.threshold < 1) || (params.threshold > 63) || (params.threshold_high < 1) || (params.threshold_high > 63)) {
+        PrintAndLogEx(ERR, "Thresholds must be between " _YELLOW_("1") " and " _YELLOW_("63"));
+        return PM3_EINVARG;
+    }
+
+    clearCommandBuffer();
+    SendCommandNG(CMD_HF_ISO14443A_SET_THRESHOLDS, (uint8_t *)&params, sizeof(params));
+    PrintAndLogEx(SUCCESS, "Thresholds set.");
     return PM3_SUCCESS;
 }
 
@@ -805,30 +861,242 @@ static int CmdStandalone(const char *Cmd) {
     void *argtable[] = {
         arg_param_begin,
         arg_u64_0("a", "arg", "<dec>", "argument byte"),
+        arg_str0("b", NULL, "<str>", "UniSniff arg: 14a, 14b, 15, iclass"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
-    uint8_t arg = arg_get_u32_def(ctx, 1, 1);
+
+    struct p {
+        uint8_t arg;
+        uint8_t mlen;
+        uint8_t mode[10];
+    } PACKED packet;
+
+    packet.arg = arg_get_u32_def(ctx, 1, 1);
+    int mlen = 0;
+    CLIParamStrToBuf(arg_get_str(ctx, 2), packet.mode, sizeof(packet.mode), &mlen);
+    if (mlen) {
+        packet.mlen = mlen;
+    }
     CLIParserFree(ctx);
     clearCommandBuffer();
-    SendCommandNG(CMD_STANDALONE, (uint8_t *)&arg, sizeof(arg));
+    SendCommandNG(CMD_STANDALONE, (uint8_t *)&packet, sizeof(struct p));
     return PM3_SUCCESS;
 }
 
 static int CmdTune(const char *Cmd) {
+
     CLIParserContext *ctx;
     CLIParserInit(&ctx, "hw tune",
-                  "Measure antenna tuning",
+                  "Measure tuning of device antenna. Results shown in graph window.\n"
+                  "This command doesn't actively tune your antennas, \n"
+                  "it's only informative by measuring voltage that the antennas will generate",
                   "hw tune"
                  );
-
     void *argtable[] = {
         arg_param_begin,
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
     CLIParserFree(ctx);
-    return CmdTuneSamples(Cmd);
+
+#define NON_VOLTAGE     1000
+#define LF_UNUSABLE_V   2000
+#define LF_MARGINAL_V   10000
+#define HF_UNUSABLE_V   3000
+#define HF_MARGINAL_V   5000
+#define ANTENNA_ERROR   1.00 // current algo has 3% error margin.
+
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(INFO, "-------- " _CYAN_("Reminder") " ----------------------------");
+    PrintAndLogEx(INFO, "`" _YELLOW_("hw tune") "` doesn't actively tune your antennas.");
+    PrintAndLogEx(INFO, "It's only informative.");
+    PrintAndLogEx(INFO, "Measuring antenna characteristics...");
+
+    // hide demod plot line
+    g_DemodBufferLen = 0;
+    setClockGrid(0, 0);
+    RepaintGraphWindow();
+    int timeout = 0;
+    int timeout_max = 20;
+
+    clearCommandBuffer();
+    SendCommandNG(CMD_MEASURE_ANTENNA_TUNING, NULL, 0);
+    PacketResponseNG resp;
+    PrintAndLogEx(INPLACE, "% 3i", timeout_max - timeout);
+    while (!WaitForResponseTimeout(CMD_MEASURE_ANTENNA_TUNING, &resp, 500)) {
+        fflush(stdout);
+        if (timeout >= timeout_max) {
+            PrintAndLogEx(WARNING, "\nNo response from Proxmark3. Aborting...");
+            return PM3_ETIMEOUT;
+        }
+        timeout++;
+        PrintAndLogEx(INPLACE, "% 3i", timeout_max - timeout);
+    }
+    PrintAndLogEx(NORMAL, "");
+
+    if (resp.status != PM3_SUCCESS) {
+        PrintAndLogEx(WARNING, "Antenna tuning failed");
+        return PM3_ESOFT;
+    }
+
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(INFO, "-------- " _CYAN_("LF Antenna") " ----------");
+    // in mVolt
+    struct p {
+        uint32_t v_lf134;
+        uint32_t v_lf125;
+        uint32_t v_lfconf;
+        uint32_t v_hf;
+        uint32_t peak_v;
+        uint32_t peak_f;
+        int divisor;
+        uint8_t results[256];
+    } PACKED;
+
+    struct p *package = (struct p *)resp.data.asBytes;
+
+    if (package->v_lf125 > NON_VOLTAGE)
+        PrintAndLogEx(SUCCESS, "%.2f kHz ........... " _YELLOW_("%5.2f") " V", LF_DIV2FREQ(LF_DIVISOR_125), (package->v_lf125 * ANTENNA_ERROR) / 1000.0);
+
+    if (package->v_lf134 > NON_VOLTAGE)
+        PrintAndLogEx(SUCCESS, "%.2f kHz ........... " _YELLOW_("%5.2f") " V", LF_DIV2FREQ(LF_DIVISOR_134), (package->v_lf134 * ANTENNA_ERROR) / 1000.0);
+
+    if (package->v_lfconf > NON_VOLTAGE && package->divisor > 0 && package->divisor != LF_DIVISOR_125 && package->divisor != LF_DIVISOR_134)
+        PrintAndLogEx(SUCCESS, "%.2f kHz ........... " _YELLOW_("%5.2f") " V", LF_DIV2FREQ(package->divisor), (package->v_lfconf * ANTENNA_ERROR) / 1000.0);
+
+    if (package->peak_v > NON_VOLTAGE && package->peak_f > 0)
+        PrintAndLogEx(SUCCESS, "%.2f kHz optimal.... " _BACK_GREEN_("%5.2f") " V", LF_DIV2FREQ(package->peak_f), (package->peak_v * ANTENNA_ERROR) / 1000.0);
+
+    // Empirical measures in mV
+    const double vdd_rdv4 = 9000;
+    const double vdd_other = 5400;
+    double vdd = IfPm3Rdv4Fw() ? vdd_rdv4 : vdd_other;
+
+    if (package->peak_v > NON_VOLTAGE && package->peak_f > 0) {
+
+        // Q measure with Q=f/delta_f
+        double v_3db_scaled = (double)(package->peak_v * 0.707) / 512; // /512 == >>9
+        uint32_t s2 = 0, s4 = 0;
+        for (int i = 1; i < 256; i++) {
+            if ((s2 == 0) && (package->results[i] > v_3db_scaled)) {
+                s2 = i;
+            }
+            if ((s2 != 0) && (package->results[i] < v_3db_scaled)) {
+                s4 = i;
+                break;
+            }
+        }
+
+        PrintAndLogEx(SUCCESS, "");
+        PrintAndLogEx(SUCCESS, "Approx. Q factor measurement");
+        double lfq1 = 0;
+        if (s4 != 0) { // we got all our points of interest
+            double a = package->results[s2 - 1];
+            double b = package->results[s2];
+            double f1 = LF_DIV2FREQ(s2 - 1 + (v_3db_scaled - a) / (b - a));
+            double c = package->results[s4 - 1];
+            double d = package->results[s4];
+            double f2 = LF_DIV2FREQ(s4 - 1 + (c - v_3db_scaled) / (c - d));
+            lfq1 = LF_DIV2FREQ(package->peak_f) / (f1 - f2);
+            PrintAndLogEx(SUCCESS, "Frequency bandwidth... " _YELLOW_("%.1lf"), lfq1);
+        }
+
+        // Q measure with Vlr=Q*(2*Vdd/pi)
+        double lfq2 = (double)package->peak_v * 3.14 / 2 / vdd;
+        PrintAndLogEx(SUCCESS, "Peak voltage.......... " _YELLOW_("%.1lf"), lfq2);
+        // cross-check results
+        if (lfq1 > 3) {
+            double approx_vdd = (double)package->peak_v * 3.14 / 2 / lfq1;
+            // Got 8858 on a RDV4 with large antenna 134/14
+            // Got 8761 on a non-RDV4
+            const double approx_vdd_other_max = 8840;
+
+            // 1% over threshold and supposedly non-RDV4
+            if ((approx_vdd > approx_vdd_other_max * 1.01) && (!IfPm3Rdv4Fw())) {
+                PrintAndLogEx(WARNING, "Contradicting measures seem to indicate you're running a " _YELLOW_("PM3GENERIC firmware on a RDV4"));
+                PrintAndLogEx(WARNING, "False positives is possible but please check your setup");
+            }
+            // 1% below threshold and supposedly RDV4
+            if ((approx_vdd < approx_vdd_other_max * 0.99) && (IfPm3Rdv4Fw())) {
+                PrintAndLogEx(WARNING, "Contradicting measures seem to indicate you're running a " _YELLOW_("PM3_RDV4 firmware on a generic device"));
+                PrintAndLogEx(WARNING, "False positives is possible but please check your setup");
+            }
+        }
+    }
+
+    char judgement[20];
+    memset(judgement, 0, sizeof(judgement));
+    // LF evaluation
+    if (package->peak_v < LF_UNUSABLE_V)
+        snprintf(judgement, sizeof(judgement), _RED_("unusable"));
+    else if (package->peak_v < LF_MARGINAL_V)
+        snprintf(judgement, sizeof(judgement), _YELLOW_("marginal"));
+    else
+        snprintf(judgement, sizeof(judgement), _GREEN_("ok"));
+
+    //PrintAndLogEx((package->peak_v < LF_UNUSABLE_V) ? WARNING : SUCCESS, "LF antenna ( %s )", judgement);
+    PrintAndLogEx((package->peak_v < LF_UNUSABLE_V) ? WARNING : SUCCESS, "LF antenna............ %s", judgement);
+
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(INFO, "-------- " _CYAN_("HF Antenna") " ----------");
+    // HF evaluation
+    if (package->v_hf > NON_VOLTAGE) {
+        PrintAndLogEx(SUCCESS, "13.56 MHz............. " _BACK_GREEN_("%5.2f") " V", (package->v_hf * ANTENNA_ERROR) / 1000.0);
+    }
+
+    memset(judgement, 0, sizeof(judgement));
+
+    PrintAndLogEx(SUCCESS, "");
+    PrintAndLogEx(SUCCESS, "Approx. Q factor measurement");
+
+    if (package->v_hf >= HF_UNUSABLE_V) {
+        // Q measure with Vlr=Q*(2*Vdd/pi)
+        double hfq = (double)package->v_hf * 3.14 / 2 / vdd;
+        PrintAndLogEx(SUCCESS, "Peak voltage.......... " _YELLOW_("%.1lf"), hfq);
+    }
+
+    if (package->v_hf < HF_UNUSABLE_V)
+        snprintf(judgement, sizeof(judgement), _RED_("unusable"));
+    else if (package->v_hf < HF_MARGINAL_V)
+        snprintf(judgement, sizeof(judgement), _YELLOW_("marginal"));
+    else
+        snprintf(judgement, sizeof(judgement), _GREEN_("ok"));
+
+    PrintAndLogEx((package->v_hf < HF_UNUSABLE_V) ? WARNING : SUCCESS, "HF antenna ( %s )", judgement);
+
+    // graph LF measurements
+    // even here, these values has 3% error.
+    uint16_t test1 = 0;
+    for (int i = 0; i < 256; i++) {
+        g_GraphBuffer[i] = package->results[i] - 128;
+        test1 += package->results[i];
+    }
+
+    if (test1 > 0) {
+        PrintAndLogEx(NORMAL, "");
+        PrintAndLogEx(INFO, "-------- " _CYAN_("LF tuning graph") " ------------");
+        PrintAndLogEx(SUCCESS, "Orange line - divisor %d / %.2f kHz"
+                      , LF_DIVISOR_125
+                      , LF_DIV2FREQ(LF_DIVISOR_125)
+                     );
+        PrintAndLogEx(SUCCESS, "Blue line - divisor   %d / %.2f kHz\n\n"
+                      , LF_DIVISOR_134
+                      , LF_DIV2FREQ(LF_DIVISOR_134)
+                     );
+        g_GraphTraceLen = 256;
+        g_CursorCPos = LF_DIVISOR_125;
+        g_CursorDPos = LF_DIVISOR_134;
+        ShowGraphWindow();
+        RepaintGraphWindow();
+    } else {
+        PrintAndLogEx(FAILED, "\nAll values are zero. Not showing LF tuning graph\n\n");
+    }
+
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(INFO, "Q factor must be measured without tag on the antenna");
+    PrintAndLogEx(NORMAL, "");
+    return PM3_SUCCESS;
 }
 
 static int CmdVersion(const char *Cmd) {
@@ -1182,28 +1450,30 @@ int set_fpga_mode(uint8_t mode) {
 }
 
 static command_t CommandTable[] = {
-    {"-------------", CmdHelp,         AlwaysAvailable, "----------------------- " _CYAN_("Hardware") " -----------------------"},
-    {"help",          CmdHelp,         AlwaysAvailable, "This help"},
-    {"break",         CmdBreak,        IfPm3Present,    "Send break loop usb command"},
-    {"bootloader",    CmdBootloader,   IfPm3Present,    "Reboot Proxmark3 into bootloader mode"},
-    {"connect",       CmdConnect,      AlwaysAvailable, "Connect Proxmark3 to serial port"},
-    {"dbg",           CmdDbg,          IfPm3Present,    "Set Proxmark3 debug level"},
-    {"detectreader",  CmdDetectReader, IfPm3Present,    "Detect external reader field"},
-    {"fpgaoff",       CmdFPGAOff,      IfPm3Present,    "Set FPGA off"},
-    {"lcd",           CmdLCD,          IfPm3Lcd,        "Send command/data to LCD"},
-    {"lcdreset",      CmdLCDReset,     IfPm3Lcd,        "Hardware reset LCD"},
-    {"ping",          CmdPing,         IfPm3Present,    "Test if the Proxmark3 is responsive"},
-    {"readmem",       CmdReadmem,      IfPm3Present,    "Read from processor flash"},
-    {"reset",         CmdReset,        IfPm3Present,    "Reset the Proxmark3"},
-    {"setlfdivisor",  CmdSetDivisor,   IfPm3Present,    "Drive LF antenna at 12MHz / (divisor + 1)"},
-    {"setmux",        CmdSetMux,       IfPm3Present,    "Set the ADC mux to a specific value"},
-    {"standalone",    CmdStandalone,   IfPm3Present,    "Jump to the standalone mode"},
-    {"status",        CmdStatus,       IfPm3Present,    "Show runtime status information about the connected Proxmark3"},
-    {"tearoff",       CmdTearoff,      IfPm3Present,    "Program a tearoff hook for the next command supporting tearoff"},
-    {"tia",           CmdTia,          IfPm3Present,    "Trigger a Timing Interval Acquisition to re-adjust the RealTimeCounter divider"},
-    {"timeout",       CmdTimeout,      AlwaysAvailable, "Set the communication timeout on the client side"},
-    {"tune",          CmdTune,         IfPm3Present,    "Measure antenna tuning"},
-    {"version",       CmdVersion,      AlwaysAvailable, "Show version information about the client and the connected Proxmark3, if any"},
+    {"help",          CmdHelp,         AlwaysAvailable,  "This help"},
+    {"-------------", CmdHelp,         AlwaysAvailable,  "----------------------- " _CYAN_("Operation") " -----------------------"},
+    {"detectreader",  CmdDetectReader, IfPm3Present,     "Detect external reader field"},
+    {"status",        CmdStatus,       IfPm3Present,     "Show runtime status information about the connected Proxmark3"},
+    {"tearoff",       CmdTearoff,      IfPm3Present,     "Program a tearoff hook for the next command supporting tearoff"},
+    {"timeout",       CmdTimeout,      AlwaysAvailable,  "Set the communication timeout on the client side"},
+    {"version",       CmdVersion,      AlwaysAvailable,  "Show version information about the client and Proxmark3"},
+    {"-------------", CmdHelp,         AlwaysAvailable,  "----------------------- " _CYAN_("Hardware") " -----------------------"},
+    {"break",         CmdBreak,        IfPm3Present,     "Send break loop usb command"},
+    {"bootloader",    CmdBootloader,   IfPm3Present,     "Reboot into bootloader mode"},
+    {"connect",       CmdConnect,      AlwaysAvailable,  "Connect to the device via serial port"},
+    {"dbg",           CmdDbg,          IfPm3Present,     "Set device side debug level"},
+    {"fpgaoff",       CmdFPGAOff,      IfPm3Present,     "Turn off FPGA on device"},
+    {"lcd",           CmdLCD,          IfPm3Lcd,         "Send command/data to LCD"},
+    {"lcdreset",      CmdLCDReset,     IfPm3Lcd,         "Hardware reset LCD"},
+    {"ping",          CmdPing,         IfPm3Present,     "Test if the Proxmark3 is responsive"},
+    {"readmem",       CmdReadmem,      IfPm3Present,     "Read from MCU flash"},
+    {"reset",         CmdReset,        IfPm3Present,     "Reset the device"},
+    {"setlfdivisor",  CmdSetDivisor,   IfPm3Present,     "Drive LF antenna at 12MHz / (divisor + 1)"},
+    {"sethfthresh",   CmdSetHFThreshold, IfPm3Present,   "Set thresholds in HF/14a mode"},
+    {"setmux",        CmdSetMux,       IfPm3Present,     "Set the ADC mux to a specific value"},
+    {"standalone",    CmdStandalone,   IfPm3Present,     "Start installed standalone mode on device"},
+    {"tia",           CmdTia,          IfPm3Present,     "Trigger a Timing Interval Acquisition to re-adjust the RealTimeCounter divider"},
+    {"tune",          CmdTune,         IfPm3Present,     "Measure tuning of device antenna"},
     {NULL, NULL, NULL, NULL}
 };
 

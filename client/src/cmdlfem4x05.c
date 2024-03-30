@@ -56,8 +56,41 @@ typedef struct {
 static const char *em4x05_annotation[] = {"Info/User", "UID", "Password", "User", "Config", "User", "User", "User", "User", "User", "User", "User", "User", "User", "Lock", "Lock"};
 static const char *em4x69_annotation [] = {"Info", "UID", "Password", "Lock", "Config", "User", "User", "User", "User", "User", "User", "User", "User", "User", "User", "User"};
 
-
 static int CmdHelp(const char *Cmd);
+
+static int CmdEM4x05CloneHelp(const char *Cmd) {
+    CLIParserContext *ctx;
+    CLIParserInit(&ctx, "lf em 4x05 clonehelp",
+                  "Display a list of available commands for cloning specific techs on EM4305/4469 tags",
+                  "lf em 4x05 clonehelp"
+                 );
+    void *argtable[] = {
+        arg_param_begin,
+        arg_param_end
+    };
+    CLIExecWithReturn(ctx, Cmd, argtable, true);
+    CLIParserFree(ctx);
+    PrintAndLogEx(NORMAL, "For cloning specific techs on EM4305/4469 tags, see commands available in corresponding LF sub-menus, e.g.:");
+    PrintAndLogEx(NORMAL, _GREEN_("lf awid clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf destron clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf em 410x clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf fdxb clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf gallagher clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf hid clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf jablotron clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf keri clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf nedap clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf nexwatch clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf noralsy clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf pac clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf paradox clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf presco clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf pyramid clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf securakey clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf viking clone --em"));
+    PrintAndLogEx(NORMAL, _GREEN_("lf visa2000 clone --em"));
+    return PM3_SUCCESS;
+}
 
 // 1 = EM4x69
 // 2 = EM4x05
@@ -74,6 +107,31 @@ static em_tech_type_t em_get_card_type(uint32_t config) {
             return EM_4369;
     }
     return EM_UNKNOWN;
+}
+
+static void em4x05_print_type(em_tech_type_t ct) {
+    switch (ct) {
+        case EM_4469: {
+            PrintAndLogEx(INFO, "Identified... " _GREEN_("EM 4469"));
+            break;
+        }
+        case EM_4369: {
+            PrintAndLogEx(INFO, "Identified... " _GREEN_("EM 4369"));
+            break;
+        }
+        case EM_4205: {
+            PrintAndLogEx(INFO, "Identified... " _GREEN_("EM 4205"));
+            break;
+        }
+        case EM_4305: {
+            PrintAndLogEx(INFO, "Identified... " _GREEN_("EM 4305"));
+            break;
+        }
+        case EM_UNKNOWN:
+        default:
+            PrintAndLogEx(FAILED, "Unknown card type");
+            break;
+    }
 }
 
 static const char *em_get_card_str(uint32_t config) {
@@ -876,7 +934,7 @@ static void em4x05_print_footer(void) {
     PrintAndLogEx(NORMAL, "");
 }
 
-static void em4x05_print_blocks(uint32_t cardtype, uint8_t *data, uint8_t dlen) {
+static void em4x05_print_blocks(em_tech_type_t cardtype, uint8_t *data, uint8_t dlen) {
 
     // must have 4 byte alignment
     if ((data == NULL) || (dlen % EM4X05_BLOCK_SIZE) != 0) {
@@ -1698,7 +1756,7 @@ int CmdEM4x05Chk(const char *Cmd) {
             return PM3_ESOFT;
         }
 
-        PrintAndLogEx(INFO, "press " _GREEN_("<Enter>") " to exit");
+        PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " to exit");
 
         for (uint32_t c = 0; c < keycount; ++c) {
 
@@ -1955,7 +2013,7 @@ int CmdEM4x05Unlock(const char *Cmd) {
 
     PrintAndLogEx(INFO, "----------------------------------------------------------------------------\n");
     PrintAndLogEx(NORMAL, "");
-    PrintAndLogEx(INFO, "press " _GREEN_("<Enter>'") " to exit");
+    PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>'") " to exit");
     PrintAndLogEx(NORMAL, "");
     PrintAndLogEx(INFO, "--------------- " _CYAN_("start") " -----------------------\n");
 
@@ -2472,8 +2530,8 @@ int CmdEM4x05Sniff(const char *Cmd) {
 
 static int CmdEM4x05View(const char *Cmd) {
     CLIParserContext *ctx;
-    CLIParserInit(&ctx, "lf em ex05 view",
-                  "Print a EM4205/4305/4369/4469 dump file (bin/eml/json)\n"
+    CLIParserInit(&ctx, "lf em 4x05 view",
+                  "Print a EM4205/4305/4369/4469 dump file\n"
                   "note:\n"
                   "We don't track if password is known in current dump file formats.\n"
                   "All zeros password block might be filler data",
@@ -2501,17 +2559,11 @@ static int CmdEM4x05View(const char *Cmd) {
         return res;
     }
 
-    uint8_t cardtype = EM_UNKNOWN;
-    if (strstr(filename, "4369")) {
-        cardtype = EM_4369;
-    } else if (strstr(filename, "4469")) {
-        cardtype = EM_4469;
-    } else if (strstr(filename, "4x05")) {
-        cardtype = EM_4305;
-    }
+    uint32_t block0 = bytes_to_num(dump, EM4X05_BLOCK_SIZE);
+    em_tech_type_t cardtype = em_get_card_type(block0);
+    em4x05_print_type(cardtype);
 
     if (verbose) {
-        uint32_t block0 = bytes_to_num(dump, EM4X05_BLOCK_SIZE);
         uint32_t serial = bytes_to_num(dump + EM4X05_BLOCK_SIZE, EM4X05_BLOCK_SIZE);
         uint32_t config = bytes_to_num(dump + (EM_CONFIG_BLOCK * EM4X05_BLOCK_SIZE), EM4X05_BLOCK_SIZE);
         printEM4x05info(block0, serial);
@@ -2534,7 +2586,7 @@ static int CmdEM4x05View(const char *Cmd) {
 static int CmdEM4x05Config(const char *Cmd) {
 
     CLIParserContext *ctx;
-    CLIParserInit(&ctx, "lf em ex05 config",
+    CLIParserInit(&ctx, "lf em 4x05 config",
                   "Create common configuration blocks",
                   "lf em 4x05 config"
                  );
@@ -2577,20 +2629,22 @@ static int CmdEM4x05Config(const char *Cmd) {
 }
 
 static command_t CommandTable[] = {
-    {"help",        CmdHelp,          AlwaysAvailable, "This help"},
-    {"-----------", CmdHelp,          AlwaysAvailable, "----------------------- " _CYAN_("general") " -----------------------"},
-    {"brute",       CmdEM4x05Brute,   IfPm3Lf,         "Bruteforce password"},
-    {"chk",         CmdEM4x05Chk,     IfPm3Lf,         "Check passwords from dictionary"},
-    {"config",      CmdEM4x05Config,  AlwaysAvailable, "Create common configuration words"},
-    {"demod",       CmdEM4x05Demod,   AlwaysAvailable, "Demodulate a EM4x05/EM4x69 tag from the GraphBuffer"},
-    {"dump",        CmdEM4x05Dump,    IfPm3Lf,         "Dump EM4x05/EM4x69 tag"},
-    {"info",        CmdEM4x05Info,    IfPm3Lf,         "Tag information"},
-    {"read",        CmdEM4x05Read,    IfPm3Lf,         "Read word data from EM4x05/EM4x69"},
-    {"sniff",       CmdEM4x05Sniff,   AlwaysAvailable, "Attempt to recover em4x05 commands from sample buffer"},
-    {"unlock",      CmdEM4x05Unlock,  IfPm3Lf,         "Execute tear off against EM4x05/EM4x69"},
-    {"view",        CmdEM4x05View,    AlwaysAvailable, "Display content from tag dump file"},
-    {"wipe",        CmdEM4x05Wipe,    IfPm3Lf,         "Wipe EM4x05/EM4x69 tag"},
-    {"write",       CmdEM4x05Write,   IfPm3Lf,         "Write word data to EM4x05/EM4x69"},
+    {"-----------", CmdHelp,            AlwaysAvailable, "----------------------- " _CYAN_("General") " -----------------------"},
+    {"help",        CmdHelp,            AlwaysAvailable, "This help"},
+    {"-----------", CmdHelp,            AlwaysAvailable, "----------------------- " _CYAN_("Operations") " -----------------------"},
+    {"clonehelp",   CmdEM4x05CloneHelp, IfPm3Lf,         "Shows the available clone commands"},
+    {"brute",       CmdEM4x05Brute,     IfPm3Lf,         "Bruteforce password"},
+    {"chk",         CmdEM4x05Chk,       IfPm3Lf,         "Check passwords from dictionary"},
+    {"config",      CmdEM4x05Config,    AlwaysAvailable, "Create common configuration words"},
+    {"demod",       CmdEM4x05Demod,     AlwaysAvailable, "Demodulate a EM4x05/EM4x69 tag from the GraphBuffer"},
+    {"dump",        CmdEM4x05Dump,      IfPm3Lf,         "Dump EM4x05/EM4x69 tag"},
+    {"info",        CmdEM4x05Info,      IfPm3Lf,         "Tag information"},
+    {"read",        CmdEM4x05Read,      IfPm3Lf,         "Read word data from EM4x05/EM4x69"},
+    {"sniff",       CmdEM4x05Sniff,     AlwaysAvailable, "Attempt to recover em4x05 commands from sample buffer"},
+    {"unlock",      CmdEM4x05Unlock,    IfPm3Lf,         "Execute tear off against EM4x05/EM4x69"},
+    {"view",        CmdEM4x05View,      AlwaysAvailable, "Display content from tag dump file"},
+    {"wipe",        CmdEM4x05Wipe,      IfPm3Lf,         "Wipe EM4x05/EM4x69 tag"},
+    {"write",       CmdEM4x05Write,     IfPm3Lf,         "Write word data to EM4x05/EM4x69"},
     {NULL, NULL, NULL, NULL}
 };
 
