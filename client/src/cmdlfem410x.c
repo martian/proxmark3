@@ -104,7 +104,7 @@ static void em410x_construct_emul_graph(uint8_t *uid, uint8_t clock, uint8_t gap
     AppendGraph(true, clock, 0);
 }
 
-//print 64 bit EM410x ID in multiple formats
+// print 64 bit EM410x ID in multiple formats
 void printEM410x(uint32_t hi, uint64_t id, bool verbose, int type) {
 
     if (!id && !hi) return;
@@ -279,7 +279,7 @@ int AskEm410xDecode(bool verbose, uint32_t *hi, uint64_t *lo) {
     size_t idx = 0;
     uint8_t bits[512] = {0};
     size_t size = sizeof(bits);
-    if (!getDemodBuff(bits, &size)) {
+    if (getDemodBuff(bits, &size) == false) {
         PrintAndLogEx(DEBUG, "DEBUG: Error - Em410x problem during copy from ASK demod");
         return PM3_ESOFT;
     }
@@ -330,7 +330,7 @@ static int CmdEM410xWatch(const char *Cmd) {
     return lfsim_wait_check(CMD_LF_EM410X_WATCH);
 }
 
-//by marshmellow
+// by marshmellow
 //takes 3 arguments - clock, invert and maxErr as integers
 //attempts to demodulate ask while decoding manchester
 //prints binary found and saves in graphbuffer for further commands
@@ -671,6 +671,7 @@ static int CmdEM410xClone(const char *Cmd) {
         arg_str1(NULL, "id", "<hex>", "EM Tag ID number (5 hex bytes)"),
         arg_lit0(NULL, "q5", "optional - specify writing to Q5/T5555 tag"),
         arg_lit0(NULL, "em", "optional - specify writing to EM4305/4469 tag"),
+        arg_lit0(NULL, "electra", "optional - add Electra blocks to tag"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, false);
@@ -682,13 +683,10 @@ static int CmdEM410xClone(const char *Cmd) {
     CLIGetHexWithReturn(ctx, 2, uid, &uid_len);
     bool q5 = arg_get_lit(ctx, 3);
     bool em = arg_get_lit(ctx, 4);
+    bool add_electra = arg_get_lit(ctx, 5);
     CLIParserFree(ctx);
 
     uint64_t id = bytes_to_num(uid, uid_len);
-    if (id == 0) {
-        PrintAndLogEx(ERR, "Cardnumber can't be zero");
-        return PM3_EINVARG;
-    }
 
     if (q5 && em) {
         PrintAndLogEx(FAILED, "Can't specify both Q5 and EM4305 at the same time");
@@ -706,6 +704,7 @@ static int CmdEM410xClone(const char *Cmd) {
     struct {
         bool Q5;
         bool EM;
+        bool add_electra;
         uint8_t clock;
         uint32_t high;
         uint32_t low;
@@ -713,6 +712,7 @@ static int CmdEM410xClone(const char *Cmd) {
 
     payload.Q5 = q5;
     payload.EM = em;
+    payload.add_electra = add_electra;
     payload.clock = clk;
     payload.high = (uint32_t)(id >> 32);
     payload.low = (uint32_t)id;
@@ -745,7 +745,7 @@ static command_t CommandTable[] = {
     {"brute",  CmdEM410xBrute,    IfPm3Lf,         "reader bruteforce attack by simulating EM410x tags"},
     {"watch",  CmdEM410xWatch,    IfPm3Lf,         "watches for EM410x 125/134 kHz tags"},
     {"spoof",  CmdEM410xSpoof,    IfPm3Lf,         "watches for EM410x 125/134 kHz tags, and replays them" },
-    {"clone",  CmdEM410xClone,    IfPm3Lf,         "write EM410x Tag ID to T55x7 or Q5/T5555 tag"},
+    {"clone",  CmdEM410xClone,    IfPm3Lf,         "clone EM410x Tag ID to T55x7, Q5/T5555 or EM4305/4469"},
     {NULL, NULL, NULL, NULL}
 };
 

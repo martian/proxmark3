@@ -834,7 +834,7 @@ static int CmdHFiClassSim(const char *Cmd) {
 
         case ICLASS_SIM_MODE_READER_ATTACK: {
             PrintAndLogEx(INFO, "Starting iCLASS sim 2 attack (elite mode)");
-            PrintAndLogEx(INFO, "press " _YELLOW_("`enter`") " to cancel");
+            PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " to abort");
             PacketResponseNG resp;
             clearCommandBuffer();
             SendCommandMIX(CMD_HF_ICLASS_SIMULATE, sim_type, NUM_CSNS, 1, csns, NUM_CSNS * PICOPASS_BLOCK_SIZE);
@@ -885,7 +885,7 @@ static int CmdHFiClassSim(const char *Cmd) {
         case ICLASS_SIM_MODE_READER_ATTACK_KEYROLL: {
             // reader in key roll mode,  when it has two keys it alternates when trying to verify.
             PrintAndLogEx(INFO, "Starting iCLASS sim 4 attack (elite mode, reader in key roll mode)");
-            PrintAndLogEx(INFO, "press Enter to cancel");
+            PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " to abort");
             PacketResponseNG resp;
             clearCommandBuffer();
             SendCommandMIX(CMD_HF_ICLASS_SIMULATE, sim_type, NUM_CSNS, 1, csns, NUM_CSNS * PICOPASS_BLOCK_SIZE);
@@ -952,7 +952,7 @@ static int CmdHFiClassSim(const char *Cmd) {
         case ICLASS_SIM_MODE_FULL:
         default: {
             PrintAndLogEx(INFO, "Starting iCLASS simulation");
-            PrintAndLogEx(INFO, "press " _YELLOW_("`button`") " to cancel");
+            PrintAndLogEx(INFO, "Press " _GREEN_("`pm3 button`") " to abort");
             uint8_t numberOfCSNs = 0;
             clearCommandBuffer();
             SendCommandMIX(CMD_HF_ICLASS_SIMULATE, sim_type, numberOfCSNs, 1, csn, 8);
@@ -4628,9 +4628,10 @@ static int CmdHFiClassSAM(const char *Cmd) {
 }
 
 static command_t CommandTable[] = {
+    {"-----------", CmdHelp,                    AlwaysAvailable, "--------------------- " _CYAN_("General") " ---------------------"},
     {"help",        CmdHelp,                    AlwaysAvailable, "This help"},
     {"list",        CmdHFiClassList,            AlwaysAvailable, "List iclass history"},
-    {"-----------", CmdHelp,                    AlwaysAvailable, "--------------------- " _CYAN_("general") " ---------------------"},
+    {"-----------", CmdHelp,                    IfPm3Iclass,     "------------------- " _CYAN_("Operations") " -------------------"},
 //    {"clone",       CmdHFiClassClone,           IfPm3Iclass,     "Create a HID credential to Picopass / iCLASS tag"},
     {"dump",        CmdHFiClassDump,            IfPm3Iclass,     "Dump Picopass / iCLASS tag to file"},
     {"info",        CmdHFiClassInfo,            IfPm3Iclass,     "Tag information"},
@@ -4641,18 +4642,18 @@ static command_t CommandTable[] = {
     {"view",        CmdHFiClassView,            AlwaysAvailable, "Display content from tag dump file"},
     {"wrbl",        CmdHFiClass_WriteBlock,     IfPm3Iclass,     "Write Picopass / iCLASS block"},
     {"creditepurse", CmdHFiClassCreditEpurse,   IfPm3Iclass,     "Credit epurse value"},
-    {"-----------", CmdHelp,                    AlwaysAvailable, "--------------------- " _CYAN_("recovery") " --------------------"},
+    {"-----------", CmdHelp,                    AlwaysAvailable, "--------------------- " _CYAN_("Recovery") " --------------------"},
 //    {"autopwn",     CmdHFiClassAutopwn,         IfPm3Iclass,     "Automatic key recovery tool for iCLASS"},
     {"chk",         CmdHFiClassCheckKeys,       IfPm3Iclass,     "Check keys"},
     {"loclass",     CmdHFiClass_loclass,        AlwaysAvailable, "Use loclass to perform bruteforce reader attack"},
     {"lookup",      CmdHFiClassLookUp,          AlwaysAvailable, "Uses authentication trace to check for key in dictionary file"},
-    {"-----------", CmdHelp,                    IfPm3Iclass,     "-------------------- " _CYAN_("simulation") " -------------------"},
+    {"-----------", CmdHelp,                    IfPm3Iclass,     "-------------------- " _CYAN_("Simulation") " -------------------"},
     {"sim",         CmdHFiClassSim,             IfPm3Iclass,     "Simulate iCLASS tag"},
-    {"eload",       CmdHFiClassELoad,           IfPm3Iclass,     "Load Picopass / iCLASS dump file into emulator memory"},
+    {"eload",       CmdHFiClassELoad,           IfPm3Iclass,     "Upload file into emulator memory"},
     {"esave",       CmdHFiClassESave,           IfPm3Iclass,     "Save emulator memory to file"},
     {"esetblk",     CmdHFiClassESetBlk,         IfPm3Iclass,     "Set emulator memory block data"},
     {"eview",       CmdHFiClassEView,           IfPm3Iclass,     "View emulator memory"},
-    {"-----------", CmdHelp,                    AlwaysAvailable, "---------------------- " _CYAN_("utils") " ----------------------"},
+    {"-----------", CmdHelp,                    AlwaysAvailable, "---------------------- " _CYAN_("Utils") " ----------------------"},
     {"configcard",  CmdHFiClassConfigCard,      IfPm3Iclass,     "Reader configuration card"},
     {"calcnewkey",  CmdHFiClassCalcNewKey,      AlwaysAvailable, "Calc diversified keys (blocks 3 & 4) to write new keys"},
     {"encode",      CmdHFiClassEncode,          AlwaysAvailable, "Encode binary wiegand to block 7"},

@@ -224,6 +224,9 @@ ISO 7816-4 Basic interindustry commands. For command APDU's.
 #define MIFARE_ULNANO_WRITESIG      0xA9
 #define MIFARE_ULNANO_LOCKSIG       0xAC
 
+#define MIFARE_ULAES_AUTH_1         0x1A
+#define MIFARE_ULAES_AUTH_2         0xAF
+
 // NTAG i2k 2K  uses sector 0, and sector 1 to have access to
 // block 0x00-0xFF.
 #define NTAG_I2C_SELECT_SECTOR      0xC2
@@ -256,20 +259,21 @@ ISO 7816-4 Basic interindustry commands. For command APDU's.
 #define MAGIC_WIPE                  0x40
 #define MAGIC_SINGLE                (MAGIC_WUPC | MAGIC_HALT | MAGIC_INIT | MAGIC_OFF) //0x1E
 
-// by CMD_HF_MIFARE_CIDENT
-#define MAGIC_GEN_1A        1
-#define MAGIC_GEN_1B        2
-#define MAGIC_GEN_2         4
-#define MAGIC_GEN_UNFUSED   5
-#define MAGIC_SUPER_GEN1    6
-#define MAGIC_SUPER_GEN2    7
-#define MAGIC_NTAG21X       8
-#define MAGIC_GEN_3         9
-#define MAGIC_GEN_4GTU      10
-#define MAGIC_GDM_AUTH      11
-#define MAGIC_QL88          12
-#define MAGIC_GDM_WUP_20    13
-#define MAGIC_GDM_WUP_40    14
+// by CMD_HF_MIFARE_CIDENT / Flags
+#define MAGIC_FLAG_NONE          0x0000
+#define MAGIC_FLAG_GEN_1A        0x0001
+#define MAGIC_FLAG_GEN_1B        0x0002
+#define MAGIC_FLAG_GEN_2         0x0004
+#define MAGIC_FLAG_GEN_UNFUSED   0x0008
+#define MAGIC_FLAG_SUPER_GEN1    0x0010
+#define MAGIC_FLAG_SUPER_GEN2    0x0020
+#define MAGIC_FLAG_NTAG21X       0x0040
+#define MAGIC_FLAG_GEN_3         0x0080
+#define MAGIC_FLAG_GEN_4GTU      0x0100
+#define MAGIC_FLAG_GDM_AUTH      0x0200
+#define MAGIC_FLAG_QL88          0x0400
+#define MAGIC_FLAG_GDM_WUP_20    0x0800
+#define MAGIC_FLAG_GDM_WUP_40    0x1000
 
 
 // Commands for configuration of Gen4 GTU cards.
@@ -313,6 +317,13 @@ ISO 7816-4 Basic interindustry commands. For command APDU's.
 #define ISO14443B_AUTHENTICATE 0x0A
 #define ISO14443B_PING         0xBA
 #define ISO14443B_PONG         0xAB
+
+// XEROX Commands
+#define ISO14443B_XEROX_PWD             0x38
+#define ISO14443B_XEROX_WUP1            0x0D
+#define ISO14443B_XEROX_WUP2            0x5D
+#define ISO14443B_XEROX_EXT_READ_BLK    0x20
+#define ISO14443B_XEROX_READ_BLK        0x30
 
 // ASK C-ticket
 #define ASK_REQT               0x10
@@ -897,13 +908,11 @@ ISO 7816-4 Basic interindustry commands. For command APDU's.
 #define HITAG1_HALT                     0x70    // left 4 bits only, followed by 8 bits (dummy) page and 8 bits CRC
 
 // HITAG2 commands
-#define HITAG2_START_AUTH               0x3    // left 5 bits only
-#define HITAG2_HALT                     0x0    // left 5 bits only
-
-#define HITAG2_READ_PAGE                0x3    // page number in bits 5 to 3, page number inverted in bit 0 and following 2 bits
-#define HITAG2_READ_PAGE_INVERTED       0x1    // page number in bits 5 to 3, page number inverted in bit 0 and following 2 bits
-#define HITAG2_WRITE_PAGE               0x2   // page number in bits 5 to 3, page number
-
+#define HITAG2_START_AUTH           "11000"         // get UID and/or start the authentication process
+#define HITAG2_READ_PAGE            "11"            // read page after auth
+#define HITAG2_READ_PAGE_INVERTED   "01"            // as read page but all bits inverted
+#define HITAG2_WRITE_PAGE           "10"            // write page after auth
+#define HITAG2_HALT                 "00"            // silence currently authenticated tag
 
 // HITAG S commands
 #define HITAGS_QUIET                    0x70
@@ -925,9 +934,6 @@ ISO 7816-4 Basic interindustry commands. For command APDU's.
 
 // 0x0A = ACK
 // 0x05 = NACK
-
-// XEROX Commands
-#define XEROX_READ_MEM                  0x20
 
 #endif
 // PROTOCOLS_H

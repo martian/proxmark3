@@ -119,7 +119,25 @@ void tdes_nxp_send(const void *in, void *out, size_t length, const void *key, un
     }
 }
 
+void aes128_nxp_receive(const void *in, void *out, size_t length, const void *key, unsigned char iv[16]) {
+    if (length % 8) return;
 
+    uint8_t *tin = (uint8_t *) in;
+    uint8_t *tout = (uint8_t *) out;
+
+    mbedtls_aes_setkey_dec(&actx, key, 128);
+    mbedtls_aes_crypt_cbc(&actx, MBEDTLS_AES_DECRYPT, length, iv, tin, tout);
+}
+
+void aes128_nxp_send(const void *in, void *out, size_t length, const void *key, unsigned char iv[16]) {
+    if (length % 8) return;
+
+    uint8_t *tin = (uint8_t *) in;
+    uint8_t *tout = (uint8_t *) out;
+
+    mbedtls_aes_setkey_enc(&actx, key, 128);
+    mbedtls_aes_crypt_cbc(&actx, MBEDTLS_AES_ENCRYPT, length, iv, tin, tout);
+}
 
 void Desfire_des_key_new(const uint8_t value[8], desfirekey_t key) {
     uint8_t data[8];

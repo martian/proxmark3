@@ -2094,7 +2094,7 @@ static int CmdEMVScan(const char *Cmd) {
         PrintAndLogEx(INFO, "GET UID, ATS");
 
         iso14a_card_select_t card;
-        if (Hf14443_4aGetCardData(&card)) {
+        if (Hf14443_4aGetCardData(&card) != PM3_SUCCESS) {
             return PM3_ERFTRANS;
         }
 
@@ -2896,11 +2896,11 @@ static int CmdEMVReader(const char *Cmd) {
 }
 
 static command_t CommandTable[] =  {
-    {"-----------", CmdHelp,                        AlwaysAvailable, "----------------------- " _CYAN_("general") " -----------------------"},
+    {"-----------", CmdHelp,                        AlwaysAvailable, "----------------------- " _CYAN_("General") " -----------------------"},
     {"help",        CmdHelp,                        AlwaysAvailable, "This help"},
     {"list",        CmdEMVList,                     AlwaysAvailable, "List ISO7816 history"},
-    {"test",        CmdEMVTest,                     AlwaysAvailable, "Crypto logic test"},
-    {"-----------", CmdHelp,                        IfPm3Iso14443a,  "---------------------- " _CYAN_("operations") " ---------------------"},
+    {"test",        CmdEMVTest,                     AlwaysAvailable, "Crypto logic selftest"},
+    {"-----------", CmdHelp,                        IfPm3Iso14443a,  "---------------------- " _CYAN_("Operations") " ---------------------"},
     {"challenge",   CmdEMVGenerateChallenge,        IfPm3Iso14443,   "Generate challenge"},
     {"exec",        CmdEMVExec,                     IfPm3Iso14443,   "Executes EMV contactless transaction"},
     {"genac",       CmdEMVAC,                       IfPm3Iso14443,   "Generate ApplicationCryptogram"},
@@ -2915,11 +2915,11 @@ static command_t CommandTable[] =  {
     {"select",      CmdEMVSelect,                   IfPm3Iso14443,   "Select applet"},
     /*
     {"-----------", CmdHelp,                        IfPm3Iso14443a,  "---------------------- " _CYAN_("simulation") " ---------------------"},
-    {"getrng",      CmdEMVGetrng,                   IfPm3Iso14443,   "get random number from terminal"},
-    {"eload",       CmdEmvELoad,                    IfPm3Iso14443,   "load EMV tag into device"},
-    {"dump",        CmdEmvDump,                     IfPm3Iso14443,   "dump EMV tag values"},
-    {"sim",         CmdEmvSim,                      IfPm3Iso14443,   "simulate EMV tag"},
-    {"clone",       CmdEmvClone,                    IfPm3Iso14443,   "clone an EMV tag"},
+    {"getrng",      CmdEMVGetrng,                   IfPm3Iso14443,   "Get random number from terminal"},
+    {"eload",       CmdEmvELoad,                    IfPm3Iso14443,   "Load EMV tag into device"},
+    {"dump",        CmdEmvDump,                     IfPm3Iso14443,   "Dump EMV tag values"},
+    {"sim",         CmdEmvSim,                      IfPm3Iso14443,   "Simulate EMV tag"},
+    {"clone",       CmdEmvClone,                    IfPm3Iso14443,   "Cone an EMV tag"},
     */
     {NULL, NULL, NULL, NULL}
 };

@@ -526,8 +526,8 @@ char *sprint_hex_ascii(const uint8_t *data, const size_t len) {
     size_t pos = (max_len * 3) + 2;
 
     while (i < max_len) {
-        char c = data[i];
-        tmp[pos + i]  = ((c < 32) || (c == 127)) ? '.' : c;
+        unsigned char c = (unsigned char)data[i];
+        tmp[pos + i]  = isprint(c) ? c : '.';
         ++i;
     }
 out:
@@ -543,15 +543,15 @@ char *sprint_ascii_ex(const uint8_t *data, const size_t len, const size_t min_st
     size_t i = 0;
 
     while (i < max_len) {
-        char c = data[i];
-        tmp[i] = ((c < 32) || (c == 127)) ? '.' : c;
+        unsigned char c = (unsigned char)data[i];
+        tmp[i]  = isprint(c) ? c : '.';
         ++i;
     }
 
     size_t m = min_str_len > i ? min_str_len : 0;
-    for (; i < m; ++i)
+    for (; i < m; ++i) {
         tmp[i] = ' ';
-
+    }
     return buf;
 }
 char *sprint_ascii(const uint8_t *data, const size_t len) {
@@ -564,7 +564,7 @@ char *sprint_breakdown_bin(color_t color, const char *bs, int width, int padn, i
         return NULL;
     }
 
-    const char *prepad     = "                                ";
+    const char *prepad     = "................................";
     const char *postmarker = " ................................";
     static char buf[32 + 120] = {0};
     memset(buf, 0, sizeof(buf));
@@ -649,9 +649,10 @@ int hex_to_bytes(const char *hexValue, uint8_t *bytesValue, size_t maxBytesValue
         indx++;
     }
 
-    if (strlen(buf) > 0)
+    if (strlen(buf) > 0) {
         //error when not completed hex bytes
         return -3;
+    }
 
     return bytesValueLen;
 }
@@ -1144,6 +1145,12 @@ void binstr_2_bytes(uint8_t *target, size_t *targetlen, const char *src) {
     }
 }
 
+void hex_xor(uint8_t *d, uint8_t *x, int n) {
+    while(n--) {
+        d[n] ^= x[n];
+    }
+}
+
 // return parity bit required to match type
 uint8_t GetParity(const uint8_t *bits, uint8_t type, int length) {
     int x;
@@ -1472,4 +1479,23 @@ void sb_append_char(smartbuf *sb, unsigned char c) {
     }
     sb->ptr[sb->idx] = c;
     sb->idx++;
+}
+
+uint8_t get_highest_frequency(const uint8_t *d, uint8_t n) {
+
+    uint8_t frequency[256] = {0};
+    uint8_t highest = 0;
+    uint8_t v = 0;
+
+    // Count the frequency of each byte
+    for(uint8_t i = 0; i < n; i++) {
+        frequency[d[i]]++;
+
+        if (frequency[d[i]] > highest) {
+            highest = frequency[d[i]];
+            v = d[i];
+        }
+    }
+    PrintAndLogEx(DEBUG, "highest occurance... %u  xor byte... 0x%02X", highest, v);
+    return v;
 }

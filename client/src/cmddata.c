@@ -1911,216 +1911,6 @@ static int CmdSamples(const char *Cmd) {
     return getSamples(n, verbose);
 }
 
-int CmdTuneSamples(const char *Cmd) {
-
-    CLIParserContext *ctx;
-    CLIParserInit(&ctx, "data tune",
-                  "Measure tuning of device antenna. Results shown in graph window.\n"
-                  "This command doesn't actively tune your antennas, \n"
-                  "it's only informative by measuring voltage that the antennas will generate",
-                  "data tune"
-                 );
-    void *argtable[] = {
-        arg_param_begin,
-        arg_param_end
-    };
-    CLIExecWithReturn(ctx, Cmd, argtable, true);
-    CLIParserFree(ctx);
-
-#define NON_VOLTAGE     1000
-#define LF_UNUSABLE_V   2000
-#define LF_MARGINAL_V   10000
-#define HF_UNUSABLE_V   3000
-#define HF_MARGINAL_V   5000
-#define ANTENNA_ERROR   1.00 // current algo has 3% error margin.
-
-    // hide demod plot line
-    g_DemodBufferLen = 0;
-    setClockGrid(0, 0);
-    RepaintGraphWindow();
-
-    int timeout = 0;
-    int timeout_max = 20;
-    PrintAndLogEx(INFO, "---------- " _CYAN_("Reminder") " ------------------------");
-    PrintAndLogEx(INFO, "`" _YELLOW_("hw tune") "` doesn't actively tune your antennas,");
-    PrintAndLogEx(INFO, "it's only informative.");
-    PrintAndLogEx(INFO, "Measuring antenna characteristics, please wait...");
-
-    clearCommandBuffer();
-    SendCommandNG(CMD_MEASURE_ANTENNA_TUNING, NULL, 0);
-    PacketResponseNG resp;
-    PrintAndLogEx(INPLACE, "% 3i", timeout_max - timeout);
-    while (!WaitForResponseTimeout(CMD_MEASURE_ANTENNA_TUNING, &resp, 500)) {
-        fflush(stdout);
-        if (timeout >= timeout_max) {
-            PrintAndLogEx(WARNING, "\nNo response from Proxmark3. Aborting...");
-            return PM3_ETIMEOUT;
-        }
-        timeout++;
-        PrintAndLogEx(INPLACE, "% 3i", timeout_max - timeout);
-    }
-
-    if (resp.status != PM3_SUCCESS) {
-        PrintAndLogEx(WARNING, "Antenna tuning failed");
-        return PM3_ESOFT;
-    }
-
-    PrintAndLogEx(NORMAL, "");
-    PrintAndLogEx(INFO, "---------- " _CYAN_("LF Antenna") " ----------");
-    // in mVolt
-    struct p {
-        uint32_t v_lf134;
-        uint32_t v_lf125;
-        uint32_t v_lfconf;
-        uint32_t v_hf;
-        uint32_t peak_v;
-        uint32_t peak_f;
-        int divisor;
-        uint8_t results[256];
-    } PACKED;
-
-    struct p *package = (struct p *)resp.data.asBytes;
-
-    if (package->v_lf125 > NON_VOLTAGE)
-        PrintAndLogEx(SUCCESS, "At %.2f kHz .......... " _YELLOW_("%5.2f") " V", LF_DIV2FREQ(LF_DIVISOR_125), (package->v_lf125 * ANTENNA_ERROR) / 1000.0);
-
-    if (package->v_lf134 > NON_VOLTAGE)
-        PrintAndLogEx(SUCCESS, "At %.2f kHz .......... " _YELLOW_("%5.2f") " V", LF_DIV2FREQ(LF_DIVISOR_134), (package->v_lf134 * ANTENNA_ERROR) / 1000.0);
-
-    if (package->v_lfconf > NON_VOLTAGE && package->divisor > 0 && package->divisor != LF_DIVISOR_125 && package->divisor != LF_DIVISOR_134)
-        PrintAndLogEx(SUCCESS, "At %.2f kHz .......... " _YELLOW_("%5.2f") " V", LF_DIV2FREQ(package->divisor), (package->v_lfconf * ANTENNA_ERROR) / 1000.0);
-
-    if (package->peak_v > NON_VOLTAGE && package->peak_f > 0)
-        PrintAndLogEx(SUCCESS, "At %.2f kHz optimal... " _YELLOW_("%5.2f") " V", LF_DIV2FREQ(package->peak_f), (package->peak_v * ANTENNA_ERROR) / 1000.0);
-
-    // Empirical measures in mV
-    const double vdd_rdv4 = 9000;
-    const double vdd_other = 5400;
-    double vdd = IfPm3Rdv4Fw() ? vdd_rdv4 : vdd_other;
-
-    if (package->peak_v > NON_VOLTAGE && package->peak_f > 0) {
-
-        // Q measure with Q=f/delta_f
-        double v_3db_scaled = (double)(package->peak_v * 0.707) / 512; // /512 == >>9
-        uint32_t s2 = 0, s4 = 0;
-        for (int i = 1; i < 256; i++) {
-            if ((s2 == 0) && (package->results[i] > v_3db_scaled)) {
-                s2 = i;
-            }
-            if ((s2 != 0) && (package->results[i] < v_3db_scaled)) {
-                s4 = i;
-                break;
-            }
-        }
-
-        PrintAndLogEx(SUCCESS, "");
-        PrintAndLogEx(SUCCESS, "Approx. Q factor measurement (*)");
-        double lfq1 = 0;
-        if (s4 != 0) { // we got all our points of interest
-            double a = package->results[s2 - 1];
-            double b = package->results[s2];
-            double f1 = LF_DIV2FREQ(s2 - 1 + (v_3db_scaled - a) / (b - a));
-            double c = package->results[s4 - 1];
-            double d = package->results[s4];
-            double f2 = LF_DIV2FREQ(s4 - 1 + (c - v_3db_scaled) / (c - d));
-            lfq1 = LF_DIV2FREQ(package->peak_f) / (f1 - f2);
-            PrintAndLogEx(SUCCESS, "Frequency bandwidth..... " _YELLOW_("%.1lf"), lfq1);
-        }
-
-        // Q measure with Vlr=Q*(2*Vdd/pi)
-        double lfq2 = (double)package->peak_v * 3.14 / 2 / vdd;
-        PrintAndLogEx(SUCCESS, "Peak voltage............ " _YELLOW_("%.1lf"), lfq2);
-        // cross-check results
-        if (lfq1 > 3) {
-            double approx_vdd = (double)package->peak_v * 3.14 / 2 / lfq1;
-            // Got 8858 on a RDV4 with large antenna 134/14
-            // Got 8761 on a non-RDV4
-            const double approx_vdd_other_max = 8840;
-
-            // 1% over threshold and supposedly non-RDV4
-            if ((approx_vdd > approx_vdd_other_max * 1.01) && (!IfPm3Rdv4Fw())) {
-                PrintAndLogEx(WARNING, "Contradicting measures seem to indicate you're running a " _YELLOW_("PM3GENERIC firmware on a RDV4"));
-                PrintAndLogEx(WARNING, "False positives is possible but please check your setup");
-            }
-            // 1% below threshold and supposedly RDV4
-            if ((approx_vdd < approx_vdd_other_max * 0.99) && (IfPm3Rdv4Fw())) {
-                PrintAndLogEx(WARNING, "Contradicting measures seem to indicate you're running a " _YELLOW_("PM3_RDV4 firmware on a generic device"));
-                PrintAndLogEx(WARNING, "False positives is possible but please check your setup");
-            }
-        }
-    }
-
-    char judgement[20];
-    memset(judgement, 0, sizeof(judgement));
-    // LF evaluation
-    if (package->peak_v < LF_UNUSABLE_V)
-        snprintf(judgement, sizeof(judgement), _RED_("unusable"));
-    else if (package->peak_v < LF_MARGINAL_V)
-        snprintf(judgement, sizeof(judgement), _YELLOW_("marginal"));
-    else
-        snprintf(judgement, sizeof(judgement), _GREEN_("ok"));
-
-    PrintAndLogEx((package->peak_v < LF_UNUSABLE_V) ? WARNING : SUCCESS, "LF antenna ( %s )", judgement);
-
-    PrintAndLogEx(NORMAL, "");
-    PrintAndLogEx(INFO, "---------- " _CYAN_("HF Antenna") " ----------");
-    // HF evaluation
-    if (package->v_hf > NON_VOLTAGE) {
-        PrintAndLogEx(SUCCESS, "13.56 MHz............... " _YELLOW_("%5.2f") " V", (package->v_hf * ANTENNA_ERROR) / 1000.0);
-    }
-
-    memset(judgement, 0, sizeof(judgement));
-
-    PrintAndLogEx(SUCCESS, "");
-    PrintAndLogEx(SUCCESS, "Approx. Q factor measurement (*)");
-
-    if (package->v_hf >= HF_UNUSABLE_V) {
-        // Q measure with Vlr=Q*(2*Vdd/pi)
-        double hfq = (double)package->v_hf * 3.14 / 2 / vdd;
-        PrintAndLogEx(SUCCESS, "peak voltage............ " _YELLOW_("%.1lf"), hfq);
-    }
-
-    if (package->v_hf < HF_UNUSABLE_V)
-        snprintf(judgement, sizeof(judgement), _RED_("unusable"));
-    else if (package->v_hf < HF_MARGINAL_V)
-        snprintf(judgement, sizeof(judgement), _YELLOW_("marginal"));
-    else
-        snprintf(judgement, sizeof(judgement), _GREEN_("ok"));
-
-    PrintAndLogEx((package->v_hf < HF_UNUSABLE_V) ? WARNING : SUCCESS, "HF antenna ( %s )", judgement);
-    PrintAndLogEx(NORMAL, "\n(*) Q factor must be measured without tag on the antenna");
-
-    // graph LF measurements
-    // even here, these values has 3% error.
-    uint16_t test1 = 0;
-    for (int i = 0; i < 256; i++) {
-        g_GraphBuffer[i] = package->results[i] - 128;
-        test1 += package->results[i];
-    }
-
-    if (test1 > 0) {
-        PrintAndLogEx(NORMAL, "");
-        PrintAndLogEx(INFO, "-------- " _CYAN_("LF tuning graph") " ---------");
-        PrintAndLogEx(SUCCESS, "Blue line  Divisor %d / %.2f kHz"
-                      , LF_DIVISOR_134
-                      , LF_DIV2FREQ(LF_DIVISOR_134)
-                     );
-        PrintAndLogEx(SUCCESS, "Red line   Divisor %d / %.2f kHz\n\n"
-                      , LF_DIVISOR_125
-                      , LF_DIV2FREQ(LF_DIVISOR_125)
-                     );
-        g_GraphTraceLen = 256;
-        g_CursorCPos = LF_DIVISOR_125;
-        g_CursorDPos = LF_DIVISOR_134;
-        ShowGraphWindow();
-        RepaintGraphWindow();
-    } else {
-
-        PrintAndLogEx(FAILED, "\nNot showing LF tuning graph since all values is zero.\n\n");
-    }
-
-    return PM3_SUCCESS;
-}
 
 static int CmdLoad(const char *Cmd) {
 
@@ -3132,10 +2922,13 @@ static int CmdDiff(const char *Cmd) {
     int res = PM3_SUCCESS;
     uint8_t *inA = NULL, *inB = NULL;
     size_t datalenA = 0, datalenB = 0;
+
+
+
     // read file A
     if (fnlenA) {
         // read dump file
-        res = pm3_load_dump(filenameA, (void **)&inA, &datalenA, 2048);
+        res = pm3_load_dump(filenameA, (void **)&inA, &datalenA, MIFARE_4K_MAX_BYTES);
         if (res != PM3_SUCCESS) {
             return res;
         }
@@ -3144,7 +2937,7 @@ static int CmdDiff(const char *Cmd) {
     // read file B
     if (fnlenB) {
         // read dump file
-        res = pm3_load_dump(filenameB, (void **)&inB, &datalenB, 2048);
+        res = pm3_load_dump(filenameB, (void **)&inB, &datalenB, MIFARE_4K_MAX_BYTES);
         if (res != PM3_SUCCESS) {
             return res;
         }
@@ -3169,14 +2962,14 @@ static int CmdDiff(const char *Cmd) {
     // download emulator memory
     if (use_e) {
 
-        uint8_t *d = calloc(4096, sizeof(uint8_t));
+        uint8_t *d = calloc(MIFARE_4K_MAX_BYTES, sizeof(uint8_t));
         if (d == NULL) {
             PrintAndLogEx(WARNING, "Fail, cannot allocate memory");
             return PM3_EMALLOC;
         }
 
         PrintAndLogEx(INFO, "downloading from emulator memory");
-        if (GetFromDevice(BIG_BUF_EML, d, 4096, 0, NULL, 0, NULL, 2500, false) == false) {
+        if (GetFromDevice(BIG_BUF_EML, d, MIFARE_4K_MAX_BYTES, 0, NULL, 0, NULL, 2500, false) == false) {
             PrintAndLogEx(WARNING, "Fail, transfer from device time-out");
             free(inA);
             free(inB);
@@ -3185,10 +2978,10 @@ static int CmdDiff(const char *Cmd) {
         }
 
         if (fnlenA) {
-            datalenB = 4096;
+            datalenB = MIFARE_4K_MAX_BYTES;
             inB = d;
         } else {
-            datalenA = 4096;
+            datalenA = MIFARE_4K_MAX_BYTES;
             inA = d;
         }
     }
@@ -3681,64 +3474,91 @@ static int CmdCryptography(const char *Cmd) {
 
     // Do data length check
     if ((type & 0x4) >> 2) { // Use AES(0) or DES(1)?
+
         if (datilen % 8 != 0) {
             PrintAndLogEx(ERR, "<data> length must be a multiple of 8. Got %d", datilen);
             return PM3_EINVARG;
         }
+
         if (keylen != 8 && keylen != 16 && keylen != 24) {
             PrintAndLogEx(ERR, "<key> must be 8, 16 or 24 bytes. Got %d", keylen);
             return PM3_EINVARG;
         }
+
     } else {
-        if (datilen % 16 != 0 && ((type & 0x2) >>1==0)) {
+
+        if (datilen % 16 != 0 && ((type & 0x2) >> 1 == 0)) {
             PrintAndLogEx(ERR, "<data> length must be a multiple of 16. Got %d", datilen);
             return PM3_EINVARG;
         }
+
         if (keylen != 16) {
             PrintAndLogEx(ERR, "<key> must be 16 bytes. Got %d", keylen);
             return PM3_EINVARG;
         }
     }
-    if ((type & 0x8) >> 3) { // Encrypt(0) or decrypt(1)?
+
+    // Encrypt(0) or decrypt(1)?
+    if ((type & 0x8) >> 3) {
+
         if ((type & 0x4) >> 2) { // AES or DES?
-            if (keylen > 8) {PrintAndLogEx(INFO, "Called 3DES decrypt"); des3_decrypt(dato, dati, key, keylen / 8);}
-            else {
+
+            if (keylen > 8) {
+
+                PrintAndLogEx(INFO, "Called 3DES decrypt");
+                des3_decrypt(dato, dati, key, keylen / 8);
+
+            } else {
+
                 PrintAndLogEx(INFO, "Called DES decrypt");
-                if (!ivlen) {des_decrypt_ecb(dato, dati, datilen, key);} // If there's an IV, use CBC
-                else {des_decrypt_cbc(dato, dati, datilen, key, iv);}
+                if (ivlen == 0) {
+                    // If there's an IV, use CBC
+                    des_decrypt_ecb(dato, dati, datilen, key);
+                } else {
+                    des_decrypt_cbc(dato, dati, datilen, key, iv);
+                }
             }
-        } else {PrintAndLogEx(INFO, "Called AES decrypt"); aes_decode(iv, key, dati, dato, datilen);}
+        } else {
+            PrintAndLogEx(INFO, "Called AES decrypt");
+            aes_decode(iv, key, dati, dato, datilen);
+        }
+
     } else {
         if (type & 0x4) { // AES or DES?
             if (type & 0x02) { // If we will calculate a MAC
                 /*PrintAndLogEx(INFO, "Called FeliCa MAC");
-                	// For DES all I know useful is the felica and fudan MAC algorithm.This is just des-cbc, but felica needs it in its way.
-                	for (int i = 0; i < datilen; i+=8){ // For all 8 byte sequences
-                		reverser(dati, &dati[i], 8, i);
-                		if (i){ // If IV is processed
-                			for (int n = 0; n < 8; ++n){
-                				dato[n] ^= dati[i+n]; // XOR with Dx
-                			}
-                			des_encrypt_ecb(dato, dato, 8, key); // Cipher itself
-                		} else { // If we didn't start with IV
-                			for (int n = 0; n < 8; ++n){
-                				dato[n] = iv[n]; // Feed data into output
-                				dato[n] ^= dati[i+n]; // XOR with D1
-                			}
-                			des_encrypt_ecb(dato, dato, 8, key); // Cipher itself
-                		}
-                	}
-                	PrintAndLogEx(SUCCESS, "MAC: %s", sprint_hex_inrow(dato, 8));*/
+                    // For DES all I know useful is the felica and fudan MAC algorithm.This is just des-cbc, but felica needs it in its way.
+                    for (int i = 0; i < datilen; i+=8){ // For all 8 byte sequences
+                        reverser(dati, &dati[i], 8, i);
+                        if (i){ // If IV is processed
+                            for (int n = 0; n < 8; ++n){
+                                dato[n] ^= dati[i+n]; // XOR with Dx
+                            }
+                            des_encrypt_ecb(dato, dato, 8, key); // Cipher itself
+                        } else { // If we didn't start with IV
+                            for (int n = 0; n < 8; ++n){
+                                dato[n] = iv[n]; // Feed data into output
+                                dato[n] ^= dati[i+n]; // XOR with D1
+                            }
+                            des_encrypt_ecb(dato, dato, 8, key); // Cipher itself
+                        }
+                    }
+                    PrintAndLogEx(SUCCESS, "MAC: %s", sprint_hex_inrow(dato, 8));*/
                 PrintAndLogEx(INFO, "Not implemented yet - feel free to contribute!");
                 return PM3_SUCCESS;
             } else {
+
                 if (keylen > 8) {
                     PrintAndLogEx(INFO, "Called 3DES encrypt keysize: %i", keylen / 8);
                     des3_encrypt(dato, dati, key, keylen / 8);
                 } else {
+
                     PrintAndLogEx(INFO, "Called DES encrypt");
-                    if (!ivlen) {des_encrypt_ecb(dato, dati, datilen, key);} // If there's an IV, use ECB
-                    else {
+
+                    if (ivlen == 0) {
+                        // If there's an IV, use ECB
+                        des_encrypt_ecb(dato, dati, datilen, key);
+                    } else {
                         des_encrypt_cbc(dato, dati, datilen, key, iv);
                         char pad[250];
                         memset(pad, ' ', 4 + 8 + (datilen - 8) * 3);
@@ -3748,8 +3568,15 @@ static int CmdCryptography(const char *Cmd) {
                 }
             }
         } else {
-            if (type & 0x02) {PrintAndLogEx(INFO, "Called AES CMAC"); aes_cmac8(iv, key, dati, dato, datilen);} // If we will calculate a MAC
-            else {PrintAndLogEx(INFO, "Called AES encrypt"); aes_encode(iv, key, dati, dato, datilen);}
+
+            if (type & 0x02) {
+                PrintAndLogEx(INFO, "Called AES CMAC");
+                // If we will calculate a MAC
+                aes_cmac8(iv, key, dati, dato, datilen);
+            } else {
+                PrintAndLogEx(INFO, "Called AES encrypt");
+                aes_encode(iv, key, dati, dato, datilen);
+            }
         }
     }
     PrintAndLogEx(SUCCESS, "Result: %s", sprint_hex(dato, datilen));
@@ -3822,9 +3649,54 @@ static int CmdBinaryMap(const char *Cmd) {
     return PM3_SUCCESS;
 }
 
-static command_t CommandTable[] = {
-    {"help",            CmdHelp,                 AlwaysAvailable,  "This help"},
+static int CmdXor(const char *Cmd) {
+    CLIParserContext *ctx;
+    CLIParserInit(&ctx, "data xor",
+                  "takes input string and xor string. Perform xor on it.\n"
+                  "If no xor string, try the most reoccuring value to xor against",
+                  "data xor -d 99aabbcc8888888888\n"
+                  "data xor -d 99aabbcc --xor 88888888\n"
+                 );
 
+    void *argtable[] = {
+        arg_param_begin,
+        arg_str1("d", "data", "<hex>", "input hex string"),
+        arg_str0("x", "xor", "<str>", "input xor string"),
+        arg_param_end
+    };
+    CLIExecWithReturn(ctx, Cmd, argtable, false);
+
+    int hlen = 128;
+    uint8_t hex[128 + 1];
+    CLIGetHexWithReturn(ctx, 1, hex, &hlen);
+
+    int xlen = 128;
+    uint8_t xor[128 + 1];
+    CLIGetHexWithReturn(ctx, 2, xor, &xlen);
+    CLIParserFree(ctx);
+
+    // find xor value
+    if (xlen == 0) {
+        uint8_t x = get_highest_frequency(hex, hlen);
+        xlen = hlen;
+        memset(xor, x, xlen);
+    }
+
+    if (hlen != xlen) {
+        PrintAndLogEx(FAILED, "Length mismatch, got %i != %i", hlen, xlen);
+        return PM3_EINVARG;
+    }
+    
+    PrintAndLogEx(SUCCESS, "input... %s", sprint_hex_inrow(hex, hlen));
+    PrintAndLogEx(SUCCESS, "xor..... %s", sprint_hex_inrow(xor, xlen));
+    hex_xor(hex, xor, hlen);
+    PrintAndLogEx(SUCCESS, "plain... " _YELLOW_("%s"), sprint_hex_inrow(hex, hlen));
+    return PM3_SUCCESS;
+}
+
+static command_t CommandTable[] = {
+    {"-----------",     CmdHelp,                 AlwaysAvailable, "------------------------- " _CYAN_("General") "-------------------------"},
+    {"help",            CmdHelp,                 AlwaysAvailable,  "This help"},
     {"-----------",     CmdHelp,                 AlwaysAvailable, "------------------------- " _CYAN_("Modulation") "-------------------------"},
     {"biphaserawdecode", CmdBiphaseDecodeRaw,    AlwaysAvailable,  "Biphase decode bin stream in DemodBuffer"},
     {"detectclock",     CmdDetectClockRate,      AlwaysAvailable,  "Detect ASK, FSK, NRZ, PSK clock rate of wave in GraphBuffer"},
@@ -3859,7 +3731,7 @@ static command_t CommandTable[] = {
     {"convertbitstream", CmdConvertBitStream,    AlwaysAvailable,  "Convert GraphBuffer's 0/1 values to 127 / -127"},
     {"getbitstream",    CmdGetBitStream,         AlwaysAvailable,  "Convert GraphBuffer's >=1 values to 1 and <1 to 0"},
 
-    {"-----------",     CmdHelp,                 AlwaysAvailable, "------------------------- " _CYAN_("General") "-------------------------"},
+    {"-----------",     CmdHelp,                 AlwaysAvailable, "------------------------- " _CYAN_("Operations") "-------------------------"},
     {"asn1",            CmdAsn1Decoder,          AlwaysAvailable,  "ASN1 decoder"},
     {"atr",             CmdAtrLookup,            AlwaysAvailable,  "ATR lookup"},
     {"bin2hex",         Cmdbin2hex,              AlwaysAvailable,  "Converts binary to hexadecimal"},
@@ -3873,10 +3745,10 @@ static command_t CommandTable[] = {
     {"load",            CmdLoad,                 AlwaysAvailable,  "Load contents of file into graph window"},
     {"num",             CmdNumCon,               AlwaysAvailable,  "Converts dec/hex/bin"},
     {"print",           CmdPrintDemodBuff,       AlwaysAvailable,  "Print the data in the DemodBuffer"},
-    {"samples",         CmdSamples,              IfPm3Present,     "Get raw samples for graph window (GraphBuffer)"},
-    {"save",            CmdSave,                 AlwaysAvailable,  "Save signal trace data  (from graph window)"},
+    {"samples",         CmdSamples,              IfPm3Present,     "Get raw samples for graph window ( GraphBuffer )"},
+    {"save",            CmdSave,                 AlwaysAvailable,  "Save signal trace data ( GraphBuffer )"},
     {"setdebugmode",    CmdSetDebugMode,         AlwaysAvailable,  "Set Debugging Level on client side"},
-    {"tune",            CmdTuneSamples,          IfPm3Present,     "Measure tuning of device antenna. Results shown in graph window"},
+    {"xor",             CmdXor,                  AlwaysAvailable,  "Xor a input string"},    
     {NULL, NULL, NULL, NULL}
 };
 

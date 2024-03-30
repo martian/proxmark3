@@ -378,6 +378,92 @@ int mifare_ultra_auth(uint8_t *keybytes) {
     return 1;
 }
 
+int mifare_ultra_aes_auth(uint8_t keyno, uint8_t *keybytes) {
+
+    /// aes-128
+    uint8_t random_a[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    uint8_t random_b[16] = { 0 };
+    uint8_t rnd_ab[32] = { 0 };
+    uint8_t enc_rnd_ab[32] = { 0 };
+    uint8_t IV[16] = { 0 };
+    uint8_t key[16] = { 0 };
+    memcpy(key, keybytes, sizeof(key));
+
+    uint16_t len = 0;
+
+    // 1 cmd + 16 bytes + 2 crc
+    uint8_t resp[19] = {0x00};
+    uint8_t respPar[5] = {0};
+
+
+    // setup AES
+    mbedtls_aes_context actx;
+    mbedtls_aes_init(&actx);
+    mbedtls_aes_init(&actx);
+    mbedtls_aes_setkey_dec(&actx, key, 128);
+
+    // Send REQUEST AUTHENTICATION / receive tag nonce
+    len = mifare_sendcmd_short(NULL, CRYPT_NONE, MIFARE_ULAES_AUTH_1, keyno, resp, respPar, NULL);
+    if (len != 19) {
+        if (g_dbglevel >= DBG_ERROR) Dbprintf("Cmd Error: %02x - expected 19 got " _RED_("%u"), resp[0], len);
+        return 0;
+    }
+
+    // decrypt tag nonce.
+    mbedtls_aes_crypt_cbc(&actx, MBEDTLS_AES_DECRYPT, sizeof(random_b), IV, resp + 1, random_b);
+
+    rol(random_b, 16);
+    memcpy(rnd_ab, random_a, 16);
+    memcpy(rnd_ab + 16, random_b, 16);
+
+    if (g_dbglevel >= DBG_EXTENDED) {
+        Dbprintf("enc_B:");
+        Dbhexdump(16, resp + 1, false);
+
+        Dbprintf("B:");
+        Dbhexdump(16, random_b, false);
+
+        Dbprintf("rnd_ab:");
+        Dbhexdump(32, rnd_ab, false);
+    }
+
+    // encrypt reader response
+    memset(IV, 0, 16);
+    mbedtls_aes_setkey_enc(&actx, key, 128);
+    mbedtls_aes_crypt_cbc(&actx, MBEDTLS_AES_ENCRYPT, sizeof(enc_rnd_ab), IV, rnd_ab, enc_rnd_ab);
+
+    // send & recieve
+    len = mifare_sendcmd(MIFARE_ULAES_AUTH_2, enc_rnd_ab, sizeof(enc_rnd_ab), resp, respPar, NULL);
+    if (len != 19) {
+        if (g_dbglevel >= DBG_ERROR) Dbprintf("Cmd Error: %02x - expected 19 got " _RED_("%u"), resp[0], len);
+        return 0;
+    }
+
+    memset(IV, 0, 16);
+    mbedtls_aes_setkey_dec(&actx, key, 128);
+    mbedtls_aes_crypt_cbc(&actx, MBEDTLS_AES_DECRYPT, sizeof(random_b), IV, resp + 1, random_b);
+
+    if (memcmp(random_b, random_a, 16) != 0) {
+        if (g_dbglevel >= DBG_ERROR) Dbprintf("failed authentication");
+        return 0;
+    }
+
+    if (g_dbglevel >= DBG_EXTENDED) {
+
+        Dbprintf("e_AB:");
+        Dbhexdump(32, enc_rnd_ab, false);
+
+        Dbprintf("A:");
+        Dbhexdump(16, random_a, false);
+
+        Dbprintf("B:");
+        Dbhexdump(16, random_b, false);
+    }
+
+    mbedtls_aes_free(&actx);
+    return 1;
+}
+
 static int mifare_ultra_readblockEx(uint8_t blockNo, uint8_t *blockData) {
     uint16_t len = 0;
     uint8_t bt[2] = {0x00, 0x00};
@@ -629,56 +715,50 @@ void emlSetMem_xt(uint8_t *data, int blockNum, int blocksCount, int block_width)
 }
 
 void emlGetMem(uint8_t *data, int blockNum, int blocksCount) {
-    uint8_t *mem = BigBuf_get_EM_addr();
-    memcpy(data, mem + blockNum * 16, blocksCount * 16);
+    emlGet(data, (blockNum * 16), (blocksCount * 16));
 }
 
-void emlGetMemBt(uint8_t *data, int offset, int byteCount) {
+bool emlCheckValBl(int blockNum) {
     uint8_t *mem = BigBuf_get_EM_addr();
-    memcpy(data, mem + offset, byteCount);
-}
+    uint8_t *d = mem + (blockNum * 16);
 
-int emlCheckValBl(int blockNum) {
-    uint8_t *mem = BigBuf_get_EM_addr();
-    uint8_t *data = mem + blockNum * 16;
-
-    if ((data[0] != (data[4] ^ 0xff)) || (data[0] != data[8]) ||
-            (data[1] != (data[5] ^ 0xff)) || (data[1] != data[9]) ||
-            (data[2] != (data[6] ^ 0xff)) || (data[2] != data[10]) ||
-            (data[3] != (data[7] ^ 0xff)) || (data[3] != data[11]) ||
-            (data[12] != (data[13] ^ 0xff)) || (data[12] != data[14]) ||
-            (data[12] != (data[15] ^ 0xff))
-       )
-        return 1;
-    return 0;
+    if ((d[0] != (d[4] ^ 0xff)) || (d[0] != d[8]) ||
+            (d[1] != (d[5] ^ 0xff)) || (d[1] != d[9]) ||
+            (d[2] != (d[6] ^ 0xff)) || (d[2] != d[10]) ||
+            (d[3] != (d[7] ^ 0xff)) || (d[3] != d[11]) ||
+            (d[12] != (d[13] ^ 0xff)) || (d[12] != d[14]) ||
+            (d[12] != (d[15] ^ 0xff))) {
+        return false;
+    }
+    return true;
 }
 
 int emlGetValBl(uint32_t *blReg, uint8_t *blBlock, int blockNum) {
     uint8_t *mem = BigBuf_get_EM_addr();
-    uint8_t *data = mem + blockNum * 16;
+    uint8_t *d = mem + blockNum * 16;
 
-    if (emlCheckValBl(blockNum))
-        return 1;
+    if (emlCheckValBl(blockNum) == false) {
+        return PM3_ESOFT;
+    }
 
-    memcpy(blReg, data, 4);
-    *blBlock = data[12];
-    return 0;
+    memcpy(blReg, d, 4);
+    *blBlock = d[12];
+    return PM3_SUCCESS;
 }
 
-int emlSetValBl(uint32_t blReg, uint8_t blBlock, int blockNum) {
+void emlSetValBl(uint32_t blReg, uint8_t blBlock, int blockNum) {
     uint8_t *mem = BigBuf_get_EM_addr();
-    uint8_t *data = mem + blockNum * 16;
+    uint8_t *d = mem + blockNum * 16;
 
-    memcpy(data + 0, &blReg, 4);
-    memcpy(data + 8, &blReg, 4);
-    blReg = blReg ^ 0xffffffff;
-    memcpy(data + 4, &blReg, 4);
+    memcpy(d + 0, &blReg, 4);
+    memcpy(d + 8, &blReg, 4);
+    blReg = blReg ^ 0xFFFFFFFF;
+    memcpy(d + 4, &blReg, 4);
 
-    data[12] = blBlock;
-    data[13] = blBlock ^ 0xff;
-    data[14] = blBlock;
-    data[15] = blBlock ^ 0xff;
-    return 0;
+    d[12] = blBlock;
+    d[13] = blBlock ^ 0xFF;
+    d[14] = blBlock;
+    d[15] = blBlock ^ 0xFF;
 }
 
 uint64_t emlGetKey(int sectorNum, int keyType) {

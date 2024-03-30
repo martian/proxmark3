@@ -36,6 +36,12 @@
 #include "fileutils.h"
 #include "flash.h"
 #include "preferences.h"
+#include "commonutil.h"
+
+#ifndef _WIN32
+#include <locale.h>
+#endif
+
 
 static int mainret = PM3_ESOFT;
 
@@ -99,6 +105,105 @@ static void showBanner_logo(LogoMode mode) {
     PrintAndLogEx(NORMAL, BANNERMSG3);
 }
 
+static uint8_t detect_current_lang(void) {
+#ifndef _WIN32
+    const char *lang = setlocale(LC_ALL, "");
+    if (lang == NULL) {
+        return 1;
+    }
+    if (memcmp(lang, "fr", 2) == 0) {
+        return 2;
+    }
+    if (memcmp(lang, "es", 2) == 0) {
+        return 3;
+    }
+#endif
+    return 1;
+}
+
+static const char *get_quote(void) {
+
+    const char *quotes_en[] = {
+        "Fund creativity, empower dreams",
+        "Invest in open innovation",
+        "Donate, empower, grow, sustain",
+        "Back global innovation today",
+        "Fuel open source revolution",
+        "Contribute funds, drive progress",
+        "Sponsor innovation, build tomorrow",
+        "Consider supporting: fund innovation",
+        "Your donation fuels progress",
+        "Empower dreams with your support",
+        "Join us: finance creative freedom",
+        "Make an impact: donate today",
+        "Help us drive open innovation",
+        "Your support, our future",
+        "Invest in a better tomorrow",
+        "Every contribution powers change",
+        "Support us, shape the future",
+        "Ignite change: support open-source creativity",
+        "Together, we can innovate without limits",
+    };
+
+    const char *quotes_fr[] = {
+        "Financez la créativité, donnez pouvoir aux rêves",
+        "Investissez dans l'innovation ouverte",
+        "Donnez, habilitez, croissez, soutenez",
+        "Soutenez l'innovation mondiale aujourd'hui",
+        "Alimentez la révolution open source",
+        "Contribuez financièrement, poussez le progrès",
+        "Parrainez l'innovation, construisez demain",
+        "Envisagez de soutenir : financez l'innovation",
+        "Votre don alimente le progrès",
+        "Donnez pouvoir aux rêves avec votre soutien",
+        "Rejoignez-nous : financez la liberté créative",
+        "Faites une différence : donnez aujourd'hui",
+        "Aidez-nous à stimuler l'innovation ouverte",
+        "Votre soutien, notre avenir",
+        "Investissez dans un meilleur demain",
+        "Chaque contribution favorise le changement",
+        "Soutenez-nous, façonnez l'avenir",
+        "Allumez le changement : soutenez la créativité open-source",
+        "Ensemble, nous pouvons innover sans limites",
+    };
+
+    const char *quotes_es[] = {
+        "Financia la creatividad, empodera sueños",
+        "Invierte en innovación abierta",
+        "Dona, empodera, crece, sostén",
+        "Apoya la innovación global hoy",
+        "Impulsa la revolución de código abierto",
+        "Contribuye fondos, impulsa el progreso",
+        "Patrocina la innovación, construye el mañana",
+        "Considera apoyar: financia la innovación",
+        "Tu donación impulsa el progreso",
+        "Empodera sueños con tu apoyo",
+        "Únete a nosotros: financia la libertad creativa",
+        "Haz un impacto: dona hoy",
+        "Ayúdanos a impulsar la innovación abierta",
+        "Tu apoyo, nuestro futuro",
+        "Invierte en un mejor mañana",
+        "Cada contribución impulsa el cambio",
+        "Apóyanos, forma el futuro",
+        "Enciende el cambio: apoya la creatividad de código abierto",
+        "Juntos, podemos innovar sin límites",
+    };
+
+    srand((uint32_t)time(NULL));
+    int r = rand() % ARRAYLEN(quotes_en);
+
+    uint8_t lang = detect_current_lang();
+    switch (lang) {
+        case 2:
+            return quotes_fr[r];
+        case 3:
+            return quotes_es[r];
+        case 1:
+        default:
+            return quotes_en[r];
+    }
+}
+
 static void showBanner(void) {
     uint8_t old_printAndLog = g_printAndLog;
     g_printAndLog &= PRINTANDLOG_PRINT;
@@ -116,10 +221,15 @@ static void showBanner(void) {
 #else
     showBanner_logo(ASCII);
 #endif
-//    PrintAndLogEx(NORMAL, "\nSupport iceman on patreon - https://www.patreon.com/iceman1001/");
-//    PrintAndLogEx(NORMAL, "                 on paypal - https://www.paypal.me/iceman1001");
-//    PrintAndLogEx(NORMAL, "\nMonero: 43mNJLpgBVaTvyZmX9ajcohpvVkaRy1kbZPm8tqAb7itZgfuYecgkRF36rXrKFUkwEGeZedPsASRxgv4HPBHvJwyJdyvQuP");
-//    PrintAndLogEx(NORMAL, "");
+
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(NORMAL, "  [ " _YELLOW_("%s!")" ]", get_quote());
+    PrintAndLogEx(NORMAL, "     Patreon - https://www.patreon.com/iceman1001/");
+    PrintAndLogEx(NORMAL, "     Paypal  - https://www.paypal.me/iceman1001/");
+    PrintAndLogEx(NORMAL, "");
+//    PrintAndLogEx(NORMAL, "   Monero");
+//    PrintAndLogEx(NORMAL, " 43mNJLpgBVaTvyZmX9ajcohpvVkaRy1kbZPm8tqAb7itZgfuYecgkRF36rXrKFUkwEGeZedPsASRxgv4HPBHvJwyJdyvQuP");
+    PrintAndLogEx(NORMAL, "");
     fflush(stdout);
     g_printAndLog = old_printAndLog;
 }
@@ -636,6 +746,11 @@ static void show_help(bool showFullHelp, char *exec_name) {
         PrintAndLogEx(NORMAL, "      --unlock-bootloader                 Enable flashing of bootloader area *DANGEROUS* (need --flash)");
         PrintAndLogEx(NORMAL, "      --force                             Enable flashing even if firmware seems to not match client version");
         PrintAndLogEx(NORMAL, "      --image <imagefile>                 image to flash. Can be specified several times.");
+        PrintAndLogEx(NORMAL, "\nOptions in memory dump mode:");
+        PrintAndLogEx(NORMAL, "      --dumpmem <dumpfile>                dumps Proxmark3 flash memory to file");
+        PrintAndLogEx(NORMAL, "      --dumpaddr <address>                starting address for dump, default 0");
+        PrintAndLogEx(NORMAL, "      --dumplen <length>                  number of bytes to dump, default 512KB");
+        PrintAndLogEx(NORMAL, "      --dumpraw                           raw address mode: dump from anywhere, not just flash");
         PrintAndLogEx(NORMAL, "\nExamples:");
         PrintAndLogEx(NORMAL, "\n  to run Proxmark3 client:\n");
         PrintAndLogEx(NORMAL, "      %s "SERIAL_PORT_EXAMPLE_H"                       -- runs the pm3 client", exec_name);
@@ -658,6 +773,103 @@ static void show_help(bool showFullHelp, char *exec_name) {
         PrintAndLogEx(NORMAL, "* https://github.com/Proxmark/proxmark3/wiki/OSX\n");
 #endif
     }
+}
+
+static int dumpmem_to_file(const char *filename, uint32_t addr, uint32_t len, bool raw, bool in_bootloader) {
+    int res = PM3_EUNDEF;
+
+    uint8_t *buffer = calloc(len, sizeof(uint8_t));
+    if (!buffer) {
+        PrintAndLogEx(ERR, "error, cannot allocate memory ");
+        res = PM3_EMALLOC;
+        goto fail;
+    }
+
+    size_t read = 0;
+    DeviceMemType_t type = raw ? MCU_MEM : MCU_FLASH;
+    if (GetFromDevice(type, buffer, len, addr, NULL, 0, NULL, 1000, true)) {
+        res = PM3_SUCCESS;
+        read = len; // GetFromDevice does not report the actual number of bytes received.
+    }
+
+    if (res == PM3_SUCCESS) {
+        if (saveFile(filename, ".bin", buffer, read) != 0) {
+            PrintAndLogEx(ERR, "error writing to file "_YELLOW_("%s"), filename);
+            res = PM3_EFILE;
+        }
+    }
+
+    free(buffer);
+fail:
+    return res;
+}
+
+static int dumpmem_pm3(char *serial_port_name, const char *filename, uint32_t addr, uint32_t len, bool raw) {
+    int ret = PM3_EUNDEF;
+    bool in_bootloader = false;
+
+    if (serial_port_name == NULL) {
+        PrintAndLogEx(ERR, "You must specify a port.\n");
+        return PM3_EINVARG;
+    }
+
+    if (OpenProxmark(&g_session.current_device, serial_port_name, true, 60, true, FLASHMODE_SPEED)) {
+        PrintAndLogEx(NORMAL, _GREEN_(" found"));
+        msleep(200);
+    } else {
+        PrintAndLogEx(ERR, "Could not find Proxmark3 on " _RED_("%s") ".\n", serial_port_name);
+        ret = PM3_ETIMEOUT;
+        goto finish;
+    }
+
+    // Determine if we're talking to a bootloader or main firmware.
+    SendCommandBL(CMD_DEVICE_INFO, 0, 0, 0, NULL, 0);
+    PacketResponseNG resp;
+    if (WaitForResponseTimeout(CMD_UNKNOWN, &resp, 1000) == false) {
+        PrintAndLogEx(ERR, "Could not get device info.");
+        goto finish2;
+    }
+    uint32_t dev_info = resp.oldarg[0];
+    in_bootloader = (dev_info & DEVICE_INFO_FLAG_CURRENT_MODE_BOOTROM) != 0;
+    if (in_bootloader) {
+        if ((dev_info & DEVICE_INFO_FLAG_UNDERSTANDS_READ_MEM) != 0) {
+            PrintAndLogEx(INFO, "Device is running the bootloader.");
+        } else {
+            PrintAndLogEx(ERR, "Device is running the bootloader, but the bootloader"
+                          " doesn't understand the READ MEM command.");
+            goto finish2;
+        }
+    }
+
+    PrintAndLogEx(SUCCESS, "Dump requested from address "_YELLOW_("%u")", length "_YELLOW_("%u")"%s.",
+                  addr, len, raw ? ", in raw address mode" : "");
+
+    PrintAndLogEx(SUCCESS, _CYAN_("Memory dumping to file..."));
+    ret = dumpmem_to_file(filename, addr, len, raw, in_bootloader);
+    if (ret != PM3_SUCCESS) {
+        goto finish2;
+    }
+    PrintAndLogEx(NORMAL, "");
+
+finish2:
+    clearCommandBuffer();
+    if (in_bootloader) {
+        g_session.current_device->g_conn->run = false;
+        SendCommandOLD(CMD_PING, 0, 0, 0, NULL, 0);
+    } else {
+        SendCommandNG(CMD_QUIT_SESSION, NULL, 0);
+        msleep(100);
+    }
+    CloseProxmark(g_session.current_device);
+
+finish:
+    if (ret == PM3_SUCCESS)
+        PrintAndLogEx(SUCCESS, _CYAN_("All done"));
+    else if (ret == PM3_EOPABORTED)
+        PrintAndLogEx(FAILED, "Aborted by user");
+    else
+        PrintAndLogEx(ERR, "Aborted on error %u", ret);
+    return ret;
 }
 
 static int flash_pm3(char *serial_port_name, uint8_t num_files, const char *filenames[FLASH_MAX_FILES], bool can_write_bl, bool force) {
@@ -812,6 +1024,11 @@ int main(int argc, char *argv[]) {
     bool debug_mode_forced = false;
     int flash_num_files = 0;
     const char *flash_filenames[FLASH_MAX_FILES];
+    bool dumpmem_mode = false;
+    const char *dumpmem_filename = NULL;
+    uint32_t dumpmem_addr = 0;
+    uint32_t dumpmem_len = 512 * 1024;
+    bool dumpmem_raw = false;
 
     // color management:
     // 1. default = no color
@@ -1013,6 +1230,44 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
+        // go to dump mode
+        if (strcmp(argv[i], "--dumpmem") == 0) {
+            dumpmem_mode = true;
+            if (i + 1 == argc) {
+                PrintAndLogEx(ERR, _RED_("ERROR:") " missing file specification after --dumpmem\n");
+                show_help(false, exec_name);
+                return 1;
+            }
+            dumpmem_filename = argv[++i];
+            continue;
+        }
+        if (strcmp(argv[i], "--dumpaddr") == 0) {
+            if (i + 1 == argc) {
+                PrintAndLogEx(ERR, _RED_("ERROR:") " missing address specification after -dumpaddr\n");
+                show_help(false, exec_name);
+                return 1;
+            }
+            uint32_t tmpaddr = strtoul(argv[i + 1], NULL, 0);
+            dumpmem_addr = tmpaddr;
+            i++;
+            continue;
+        }
+        if (strcmp(argv[i], "--dumplen") == 0) {
+            if (i + 1 == argc) {
+                PrintAndLogEx(ERR, _RED_("ERROR:") " missing address specification after -dumplen\n");
+                show_help(false, exec_name);
+                return 1;
+            }
+            uint32_t tmplen = strtoul(argv[i + 1], NULL, 0);
+            dumpmem_len = tmplen;
+            i++;
+            continue;
+        }
+        if (strcmp(argv[i], "--dumpraw") == 0) {
+            dumpmem_raw = true;
+            continue;
+        }
+
         // go to flash mode
         if (strcmp(argv[i], "--flash") == 0) {
             flash_mode = true;
@@ -1094,6 +1349,11 @@ int main(int argc, char *argv[]) {
     if (speed == 0)
         speed = USART_BAUD_RATE;
 
+    if (dumpmem_mode) {
+        dumpmem_pm3(port, dumpmem_filename, dumpmem_addr, dumpmem_len, dumpmem_raw);
+        exit(EXIT_SUCCESS);
+    }
+
     if (flash_mode) {
         flash_pm3(port, flash_num_files, flash_filenames, flash_can_write_bl, flash_force);
         exit(EXIT_SUCCESS);
@@ -1148,7 +1408,7 @@ int main(int argc, char *argv[]) {
     }
 
     // ascii art only in interactive client
-    if (!script_cmds_file && !script_cmd && g_session.stdinOnTTY && g_session.stdoutOnTTY && !flash_mode && !reboot_bootloader_mode) {
+    if (!script_cmds_file && !script_cmd && g_session.stdinOnTTY && g_session.stdoutOnTTY && !dumpmem_mode && !flash_mode && !reboot_bootloader_mode) {
         showBanner();
     }
 

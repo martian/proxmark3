@@ -56,45 +56,107 @@
 
 static uint8_t dummy_answer = 0;
 
-//-----------------------------------------------------------------------------
-// Select, Authenticate, Read a MIFARE tag.
-// key_auth_cmd is one of MIFARE_AUTH_KEYA, MIFARE_AUTH_KEYB, or MIFARE_MAGIC_GDM_AUTH_KEY
-// read_cmd is one of ISO14443A_CMD_READBLOCK, MIFARE_MAGIC_GDM_READBLOCK, or MIFARE_MAGIC_GDM_READ_CFG
-// block_data must be 16*count bytes large
-// block_no through block_no+count-1 normally needs to be within the same sector
-//-----------------------------------------------------------------------------
-int16_t mifare_cmd_readblocks(uint8_t key_auth_cmd, uint8_t *key, uint8_t read_cmd, uint8_t block_no, uint8_t count, uint8_t *block_data) {
+// magic uid card generation 1 commands
+static uint8_t wupC1[] = { MIFARE_MAGICWUPC1 };
+static uint8_t wupC2[] = { MIFARE_MAGICWUPC2 };
+static uint8_t wipeC[] = { MIFARE_MAGICWIPEC };
+// GDM alt magic wakeup
+static uint8_t wupGDM1[] = { MIFARE_MAGIC_GDM_WUPC1 };
+static uint8_t wupGDM2[] = { MIFARE_MAGIC_GDM_WUPC2 };
 
-    uint64_t ui64key = bytes_to_num(key, 6);
-
-    uint8_t uid[10] = {0x00};
+static bool mifare_wakeup_auth(struct Crypto1State *pcs, MifareWakeupType wakeup, uint8_t key_auth_cmd, uint8_t *key, uint8_t block_no) {
     uint32_t cuid = 0;
-    struct Crypto1State mpcs = {0, 0};
-    struct Crypto1State *pcs = &mpcs;
+    uint8_t receivedAnswer[MAX_MIFARE_FRAME_SIZE] = {0x00};
+    uint8_t receivedAnswerPar[MAX_MIFARE_PARITY_SIZE] = {0x00};
 
     iso14443a_setup(FPGA_HF_ISO14443A_READER_LISTEN);
+
     clear_trace();
     set_tracing(true);
-
-    uint32_t timeout = iso14a_get_timeout();
 
     LED_A_ON();
     LED_B_OFF();
     LED_C_OFF();
 
+    switch (wakeup) {
+        case MF_WAKE_NONE:
+            break;
+        case MF_WAKE_WUPA:
+            if (!iso14443a_select_cardEx(NULL, NULL, &cuid, true, 0, true, &WUPA_POLLING_PARAMETERS)) {
+                if (g_dbglevel >= DBG_ERROR) Dbprintf("Can't select card");
+                return false;
+            };
+            break;
+        case MF_WAKE_REQA:
+            if (!iso14443a_select_cardEx(NULL, NULL, &cuid, true, 0, true, &REQA_POLLING_PARAMETERS)) {
+                if (g_dbglevel >= DBG_ERROR) Dbprintf("Can't select card");
+                return false;
+            };
+            break;
+        case MF_WAKE_GEN1A:
+            ReaderTransmitBitsPar(wupC1, 7, NULL, NULL);
+            if (!ReaderReceive(receivedAnswer, receivedAnswerPar) || (receivedAnswer[0] != 0x0a)) {
+                if (g_dbglevel >= DBG_ERROR) Dbprintf("wupC1 error");
+                return false;
+            }
+
+            ReaderTransmit(wupC2, sizeof(wupC2), NULL);
+            if (!ReaderReceive(receivedAnswer, receivedAnswerPar) || (receivedAnswer[0] != 0x0a)) {
+                if (g_dbglevel >= DBG_INFO) Dbprintf("Assuming Magic Gen 1B tag. [wupC2 failed]");
+            }
+            break;
+        case MF_WAKE_GEN1B:
+            ReaderTransmitBitsPar(wupC1, 7, NULL, NULL);
+            if (!ReaderReceive(receivedAnswer, receivedAnswerPar) || (receivedAnswer[0] != 0x0a)) {
+                if (g_dbglevel >= DBG_ERROR) Dbprintf("wupC1 error");
+                return false;
+            }
+            break;
+        case MF_WAKE_GDM_ALT:
+            ReaderTransmitBitsPar(wupGDM1, 7, NULL, NULL);
+            if (!ReaderReceive(receivedAnswer, receivedAnswerPar) || (receivedAnswer[0] != 0x0a)) {
+                if (g_dbglevel >= DBG_ERROR) Dbprintf("wupGDM1 error");
+                return false;
+            }
+            ReaderTransmit(wupGDM2, sizeof(wupGDM2), NULL);
+            if (!ReaderReceive(receivedAnswer, receivedAnswerPar) || (receivedAnswer[0] != 0x0a)) {
+                if (g_dbglevel >= DBG_INFO) Dbprintf("wupGDM2 error");
+                // maybe this is fine on some tags?
+            }
+            break;
+    }
+
+    if (key_auth_cmd != 0) {
+        uint64_t ui64key = bytes_to_num(key, 6);
+        if (mifare_classic_authex_cmd(pcs, cuid, block_no, key_auth_cmd, ui64key, AUTH_FIRST, NULL, NULL, NULL)) {
+            if (g_dbglevel >= DBG_ERROR) Dbprintf("Auth error");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+// Select, Authenticate, Read a MIFARE tag.
+// wakeup determines the type of wakeup
+// key_auth_cmd is usually one of MIFARE_AUTH_KEYA, MIFARE_AUTH_KEYB, MIFARE_MAGIC_GDM_AUTH_KEY or 0 to disable auth
+// read_cmd is usually one of ISO14443A_CMD_READBLOCK, MIFARE_MAGIC_GDM_READBLOCK, or MIFARE_MAGIC_GDM_READ_CFG
+// block_data must be 16*count bytes large
+// block_no through block_no+count-1 normally needs to be within the same sector
+//-----------------------------------------------------------------------------
+int16_t mifare_cmd_readblocks(MifareWakeupType wakeup, uint8_t key_auth_cmd, uint8_t *key, uint8_t read_cmd, uint8_t block_no, uint8_t count, uint8_t *block_data) {
+    struct Crypto1State mpcs = {0, 0};
+    struct Crypto1State *pcs = (key_auth_cmd == 0) ? NULL : &mpcs;;
+
+    uint32_t timeout = iso14a_get_timeout();
+
     int retval = PM3_SUCCESS;
 
-    if (iso14443a_select_card(uid, NULL, &cuid, true, 0, true) == false) {
-        if (g_dbglevel >= DBG_ERROR) Dbprintf("Can't select card");
+    if (mifare_wakeup_auth(pcs, wakeup, key_auth_cmd, key, block_no) == false) {
         retval = PM3_ESOFT;
         goto OUT;
     }
-
-    if (mifare_classic_authex_cmd(pcs, cuid, block_no, key_auth_cmd, ui64key, AUTH_FIRST, NULL, NULL, NULL)) {
-        if (g_dbglevel >= DBG_ERROR) Dbprintf("Auth error");
-        retval = PM3_ESOFT;
-        goto OUT;
-    };
 
     // frame waiting time (FWT) in 1/fc
     uint32_t fwt = 256 * 16 * (1 << 7);
@@ -127,42 +189,22 @@ OUT:
 
 //-----------------------------------------------------------------------------
 // Select, Authenticate, Write a MIFARE tag.
-// key_auth_cmd is one of MIFARE_AUTH_KEYA, MIFARE_AUTH_KEYB, or MIFARE_MAGIC_GDM_AUTH_KEY
-// write_cmd is one of ISO14443A_CMD_WRITEBLOCK, MIFARE_MAGIC_GDM_WRITEBLOCK, or MIFARE_MAGIC_GDM_WRITE_CFG
+// wakeup determines the type of wakeup
+// key_auth_cmd is usually one of MIFARE_AUTH_KEYA, MIFARE_AUTH_KEYB, MIFARE_MAGIC_GDM_AUTH_KEY or 0 to disable auth
+// write_cmd is usually one of ISO14443A_CMD_WRITEBLOCK, MIFARE_MAGIC_GDM_WRITEBLOCK, or MIFARE_MAGIC_GDM_WRITE_CFG
 // block_data must be 16*count bytes large
 // block_no through block_no+count-1 normally needs to be within the same sector
 //-----------------------------------------------------------------------------
-int16_t mifare_cmd_writeblocks(uint8_t key_auth_cmd, uint8_t *key, uint8_t write_cmd, uint8_t block_no, uint8_t count, uint8_t *block_data) {
-
-    uint64_t ui64key = bytes_to_num(key, 6);
-
-    uint8_t uid[10] = {0x00};
-    uint32_t cuid = 0;
+int16_t mifare_cmd_writeblocks(MifareWakeupType wakeup, uint8_t key_auth_cmd, uint8_t *key, uint8_t write_cmd, uint8_t block_no, uint8_t count, uint8_t *block_data) {
     struct Crypto1State mpcs = {0, 0};
-    struct Crypto1State *pcs = &mpcs;
-
-    iso14443a_setup(FPGA_HF_ISO14443A_READER_LISTEN);
-
-    clear_trace();
-    set_tracing(true);
-
-    LED_A_ON();
-    LED_B_OFF();
-    LED_C_OFF();
+    struct Crypto1State *pcs = (key_auth_cmd == 0) ? NULL : &mpcs;;
 
     int retval = PM3_SUCCESS;
 
-    if (!iso14443a_select_card(uid, NULL, &cuid, true, 0, true)) {
-        if (g_dbglevel >= DBG_ERROR) Dbprintf("Can't select card");
+    if (mifare_wakeup_auth(pcs, wakeup, key_auth_cmd, key, block_no) == false) {
         retval = PM3_ESOFT;
         goto OUT;
-    };
-
-    if (mifare_classic_authex_cmd(pcs, cuid, block_no, key_auth_cmd, ui64key, AUTH_FIRST, NULL, NULL, NULL)) {
-        if (g_dbglevel >= DBG_ERROR) Dbprintf("Auth error");
-        retval = PM3_ESOFT;
-        goto OUT;
-    };
+    }
 
     for (uint8_t i = 0; i < count; i++) {
         int res = mifare_classic_writeblock_ex(pcs, block_no + i, block_data + (i * 16), write_cmd);
@@ -202,7 +244,7 @@ void MifareReadSector(uint8_t sector_no, uint8_t key_type, uint8_t *key) {
     uint8_t num_blocks = NumBlocksPerSector(sector_no);
 
     uint8_t outbuf[16 * 16];
-    int16_t retval = mifare_cmd_readblocks(MIFARE_AUTH_KEYA + (key_type & 1), key, ISO14443A_CMD_READBLOCK, block_no, num_blocks, outbuf);
+    int16_t retval = mifare_cmd_readblocks(MF_WAKE_WUPA, MIFARE_AUTH_KEYA + (key_type & 1), key, ISO14443A_CMD_READBLOCK, block_no, num_blocks, outbuf);
 
     reply_old(CMD_ACK, retval == PM3_SUCCESS, 0, 0, outbuf, 16 * num_blocks);
 }
@@ -237,6 +279,36 @@ void MifareUC_Auth(uint8_t arg0, uint8_t *keybytes) {
         LEDsoff();
     }
     reply_mix(CMD_ACK, 1, 0, 0, 0, 0);
+}
+
+void MifareUL_AES_Auth(bool turn_off_field, uint8_t keyno, uint8_t *keybytes) {
+
+    LED_A_ON();
+    LED_B_OFF();
+    LED_C_OFF();
+
+    iso14443a_setup(FPGA_HF_ISO14443A_READER_LISTEN);
+
+    clear_trace();
+    set_tracing(true);
+
+    if (!iso14443a_select_card(NULL, NULL, NULL, true, 0, true)) {
+        if (g_dbglevel >= DBG_ERROR) Dbprintf("Can't select card");
+        reply_ng(CMD_HF_MIFAREULAES_AUTH, PM3_ESOFT, NULL, 0);
+        return;
+    };
+
+    if (!mifare_ultra_aes_auth(keyno, keybytes)) {
+        if (g_dbglevel >= DBG_ERROR) Dbprintf("Authentication failed");
+        reply_ng(CMD_HF_MIFAREULAES_AUTH, PM3_ESOFT, NULL, 0);
+        return;
+    }
+
+    if (turn_off_field) {
+        FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
+        LEDsoff();
+    }
+    reply_ng(CMD_HF_MIFAREULAES_AUTH, PM3_SUCCESS, NULL, 0);
 }
 
 // Arg0 = BlockNo,
@@ -319,8 +391,8 @@ void MifareUReadCard(uint8_t arg0, uint16_t arg1, uint8_t arg2, uint8_t *datain)
     // params
     uint8_t blockNo = arg0;
     uint16_t blocks = arg1;
-    bool useKey = (arg2 == 1); //UL_C
-    bool usePwd = (arg2 == 2); //UL_EV1/NTAG
+    bool useKey = (arg2 == 1); // UL_C
+    bool usePwd = (arg2 == 2); // UL_EV1/NTAG
     uint32_t countblocks = 0;
     uint8_t *dataout = BigBuf_malloc(CARD_MEMORY_SIZE);
     if (dataout == NULL) {
@@ -365,7 +437,7 @@ void MifareUReadCard(uint8_t arg0, uint16_t arg1, uint8_t arg2, uint8_t *datain)
             break;
         }
 
-        len = mifare_ultra_readblock(blockNo + i, dataout + 4 * i);
+        len = mifare_ultra_readblock(blockNo + i, dataout + (4 * i));
 
         if (len) {
             if (g_dbglevel >= DBG_ERROR) Dbprintf("Read block %d error", i);
@@ -2204,13 +2276,6 @@ int MifareECardLoad(uint8_t sectorcnt, uint8_t keytype) {
 // bit 5 - need to set datain instead of issuing USB reply (called via ARM for StandAloneMode14a)
 // bit 6 - wipe tag.
 //-----------------------------------------------------------------------------
-// magic uid card generation 1 commands
-static uint8_t wupC1[] = { MIFARE_MAGICWUPC1 };
-static uint8_t wupC2[] = { MIFARE_MAGICWUPC2 };
-static uint8_t wipeC[] = { MIFARE_MAGICWIPEC };
-// GDM alt magic wakeup
-static uint8_t wupGDM1[] = { MIFARE_MAGIC_GDM_WUPC1 };
-//static uint8_t wupGDM2[] = { MIFARE_MAGIC_GDM_WUPC2 };
 
 void MifareCSetBlock(uint32_t arg0, uint32_t arg1, uint8_t *datain) {
 
@@ -2432,39 +2497,36 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
     uint8_t gen4GetConf[8] = {GEN_4GTU_CMD, 0x00, 0x00, 0x00, 0x00, GEN_4GTU_GETCNF, 0, 0};
     uint8_t superGen1[9] = {0x0A, 0x00, 0x00, 0xA6, 0xB0, 0x00, 0x10, 0x14, 0x1D};
     bool isGen2 = false;
-    bool isGen1AGdm = false;
 
     uint8_t *par = BigBuf_calloc(MAX_PARITY_SIZE);
     uint8_t *buf = BigBuf_calloc(PM3_CMD_DATA_SIZE);
     uint8_t *uid = BigBuf_calloc(10);
-    uint8_t *data = BigBuf_calloc(16);
-
+    uint16_t flag = MAGIC_FLAG_NONE;
     uint32_t cuid = 0;
-    size_t data_off = 0;
+    int res = 0;
 
     iso14443a_setup(FPGA_HF_ISO14443A_READER_LISTEN);
 
     // Generation 1 test
     ReaderTransmitBitsPar(wupC1, 7, NULL, NULL);
-    if (ReaderReceive(rec, recpar) && (rec[0] == 0x0a)) {
-        uint8_t isGen = MAGIC_GEN_1A;
+    if (ReaderReceive(rec, recpar) && (rec[0] == 0x0A)) {
+        flag = MAGIC_FLAG_GEN_1A;
         ReaderTransmit(wupC2, sizeof(wupC2), NULL);
-        if (!ReaderReceive(rec, recpar) || (rec[0] != 0x0a)) {
-            isGen = MAGIC_GEN_1B;
-        };
-        data[data_off++] = isGen;
+        if (ReaderReceive(rec, recpar) && (rec[0] != 0x0A)) {
+            flag = MAGIC_FLAG_GEN_1B;
+        }
 
         // check for GDM config
         ReaderTransmit(gen4gdmGetConf, sizeof(gen4gdmGetConf), NULL);
-        int res = ReaderReceive(buf, par);
+        res = ReaderReceive(buf, par);
         if (res > 1) {
-            isGen1AGdm = true;
+            flag |= MAGIC_FLAG_GDM_WUP_40;
         }
     }
 
     mf_reset_card();
 
-    int res = iso14443a_select_card(uid, NULL, &cuid, true, 0, true);
+    res = iso14443a_select_card(uid, NULL, &cuid, true, 0, true);
     if (res) {
         // Check for Magic Gen4 GTU with default password:
         // Get config should return 30 or 32 bytes
@@ -2472,7 +2534,7 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
         ReaderTransmit(gen4GetConf, sizeof(gen4GetConf), NULL);
         res = ReaderReceive(buf, par);
         if (res == 32 || res == 34) {
-            data[data_off++] = MAGIC_GEN_4GTU;
+            flag |= MAGIC_FLAG_GEN_4GTU;
         }
     }
 
@@ -2482,7 +2544,7 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
     res = iso14443a_select_card(uid, NULL, &cuid, true, 0, false);
     if (res) {
         if (cuid == 0xAA55C396) {
-            data[data_off++] = MAGIC_GEN_UNFUSED;
+            flag |= MAGIC_FLAG_GEN_UNFUSED;
         }
 
         ReaderTransmit(rats, sizeof(rats), NULL);
@@ -2492,38 +2554,38 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
             if (memcmp(buf, "\x09\x78\x00\x91\x02\xDA\xBC\x19\x10", 9) == 0) {
                 // test for some MFC gen2
                 isGen2 = true;
-                data[data_off++] = MAGIC_GEN_2;
+                flag |= MAGIC_FLAG_GEN_2;
             } else if (memcmp(buf, "\x0D\x78\x00\x71\x02\x88\x49\xA1\x30\x20\x15\x06\x08\x56\x3D", 15) == 0) {
                 // test for some MFC 7b gen2
                 isGen2 = true;
-                data[data_off++] = MAGIC_GEN_2;
+                flag |= MAGIC_FLAG_GEN_2;
             } else if (memcmp(buf, "\x0A\x78\x00\x81\x02\xDB\xA0\xC1\x19\x40\x2A\xB5", 12) == 0) {
                 // test for Ultralight magic gen2
                 isGen2 = true;
-                data[data_off++] = MAGIC_GEN_2;
+                flag |= MAGIC_FLAG_GEN_2;
             } else if (memcmp(buf, "\x85\x00\x00\xA0\x00\x00\x0A\xC3\x00\x04\x03\x01\x01\x00\x0B\x03\x41\xDF", 18) == 0) {
                 // test for Ultralight EV1 magic gen2
                 isGen2 = true;
-                data[data_off++] = MAGIC_GEN_2;
+                flag |= MAGIC_FLAG_GEN_2;
             } else if (memcmp(buf, "\x85\x00\x00\xA0\x0A\x00\x0A\xC3\x00\x04\x03\x01\x01\x00\x0B\x03\x16\xD7", 18) == 0) {
                 // test for some other Ultralight EV1 magic gen2
                 isGen2 = true;
-                data[data_off++] = MAGIC_GEN_2;
+                flag |= MAGIC_FLAG_GEN_2;
             } else if (memcmp(buf, "\x85\x00\x00\xA0\x0A\x00\x0A\xB0\x00\x00\x00\x00\x00\x00\x00\x00\x18\x4D", 18) == 0) {
                 // test for some other Ultralight magic gen2
                 isGen2 = true;
-                data[data_off++] = MAGIC_GEN_2;
+                flag |= MAGIC_FLAG_GEN_2;
             } else if (memcmp(buf, "\x85\x00\x00\xA0\x00\x00\x0A\xA5\x00\x04\x04\x02\x01\x00\x0F\x03\x79\x0C", 18) == 0) {
                 // test for NTAG213 magic gen2
                 isGen2 = true;
-                data[data_off++] = MAGIC_GEN_2;
+                flag |= MAGIC_FLAG_GEN_2;
             }
 
             // test for super card
             ReaderTransmit(superGen1, sizeof(superGen1), NULL);
             res = ReaderReceive(buf, par);
             if (res == 22) {
-                uint8_t isGen = MAGIC_SUPER_GEN1;
+                uint8_t isGen = MAGIC_FLAG_SUPER_GEN1;
 
                 // check for super card gen2
                 // not available after RATS, reset card before executing
@@ -2533,10 +2595,10 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
                 ReaderTransmit(rdbl00, sizeof(rdbl00), NULL);
                 res = ReaderReceive(buf, par);
                 if (res == 18) {
-                    isGen = MAGIC_SUPER_GEN2;
+                    isGen = MAGIC_FLAG_SUPER_GEN2;
                 }
 
-                data[data_off++] = isGen;
+                flag |= isGen;
             }
         }
 
@@ -2549,7 +2611,7 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
                 ReaderTransmit(rdblf0, sizeof(rdblf0), NULL);
                 res = ReaderReceive(buf, par);
                 if (res == 18) {
-                    data[data_off++] = MAGIC_NTAG21X;
+                    flag |= MAGIC_FLAG_NTAG21X;
                 }
             }
         } else {
@@ -2562,7 +2624,7 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
             // regular cards will NAK the WRITEBLOCK(0) command, while DirectWrite will ACK it
             // if we do get an ACK, we immediately abort to ensure nothing is ever actually written
             // only perform test if we haven't already identified Gen2.  No need test if we have a positive identification already
-            if (!isGen2) {
+            if (isGen2 == false) {
                 mf_reset_card();
 
                 res = iso14443a_select_card(uid, NULL, &cuid, true, 0, true);
@@ -2572,7 +2634,7 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
                     if (mifare_classic_authex(pcs, cuid, 0, keytype, tmpkey, AUTH_FIRST, NULL, NULL) == 0) {
 
                         if ((mifare_sendcmd_short(pcs, 1, ISO14443A_CMD_WRITEBLOCK, 0, buf, par, NULL) == 1) && (buf[0] == 0x0A)) {
-                            data[data_off++] = MAGIC_GEN_2;
+                            flag |= MAGIC_FLAG_GEN_2;
                             // turn off immediately to ensure nothing ever accidentally writes to the block
                             FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
                         }
@@ -2589,7 +2651,7 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
                 ReaderTransmit(rdbl00, sizeof(rdbl00), NULL);
                 res = ReaderReceive(buf, par);
                 if (res == 18) {
-                    data[data_off++] = MAGIC_GEN_3;
+                    flag |= MAGIC_FLAG_GEN_3;
                 }
             }
 
@@ -2601,7 +2663,7 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
                 ReaderTransmit(gen4gdmAuth, sizeof(gen4gdmAuth), NULL);
                 res = ReaderReceive(buf, par);
                 if (res == 4) {
-                    data[data_off++] = MAGIC_GDM_AUTH;
+                    flag |= MAGIC_FLAG_GDM_AUTH;
                 }
             }
 
@@ -2611,24 +2673,20 @@ void MifareCIdent(bool is_mfc, uint8_t keytype, uint8_t *key) {
             res = iso14443a_select_card(uid, NULL, &cuid, true, 0, true);
             if (res) {
                 if (mifare_classic_authex(pcs, cuid, 68, MF_KEY_B, 0x707B11FC1481, AUTH_FIRST, NULL, NULL) == 0) {
-                    data[data_off++] = MAGIC_QL88;
+                    flag |= MAGIC_FLAG_QL88;
                 }
                 crypto1_deinit(pcs);
             }
         }
     };
 
-    if (isGen1AGdm == true) {
-        data[data_off++] = MAGIC_GDM_WUP_40;
-    }
-
-    // GEM alt magic wakeup (20)
+    // GDM alt magic wakeup (20)
     ReaderTransmitBitsPar(wupGDM1, 7, NULL, NULL);
     if (ReaderReceive(rec, recpar) && (rec[0] == 0x0a)) {
-        data[data_off++] = MAGIC_GDM_WUP_20;
+        flag |= MAGIC_FLAG_GDM_WUP_20;
     }
 
-    reply_ng(CMD_HF_MIFARE_CIDENT, PM3_SUCCESS, data, data_off);
+    reply_ng(CMD_HF_MIFARE_CIDENT, PM3_SUCCESS, (uint8_t *)&flag, sizeof(uint16_t));
     // turns off
     OnSuccessMagic();
     BigBuf_free();
@@ -2706,11 +2764,11 @@ OUT:
 void MifareHasStaticEncryptedNonce(uint8_t block_no, uint8_t key_type, uint8_t *key) {
     FpgaWriteConfWord(FPGA_MAJOR_MODE_OFF);
 
+    LEDsoff();
     clear_trace();
     set_tracing(true);
 
     int retval = PM3_SUCCESS;
-    uint8_t *uid = BigBuf_calloc(10);
 
     uint64_t ui64key = bytes_to_num(key, 6);
     uint8_t data[1] = { NONCE_FAIL };
@@ -2722,7 +2780,7 @@ void MifareHasStaticEncryptedNonce(uint8_t block_no, uint8_t key_type, uint8_t *
     iso14443a_setup(FPGA_HF_ISO14443A_READER_LISTEN);
 
     uint32_t cuid = 0;
-    if (!iso14443a_select_card(uid, NULL, &cuid, true, 0, true)) {
+    if (iso14443a_select_card(NULL, NULL, &cuid, true, 0, true) == false) {
         retval = PM3_ESOFT;
         goto OUT;
     }
@@ -2745,13 +2803,15 @@ void MifareHasStaticEncryptedNonce(uint8_t block_no, uint8_t key_type, uint8_t *
             goto OUT;
         };
 
-        if (g_dbglevel >= DBG_INFO)
+        if (g_dbglevel >= DBG_INFO) {
             Dbprintf("nt: %x, nt encoded: %x", nt, ntenc);
+        }
 
-        if (oldntenc == 0)
+        if (oldntenc == 0) {
             oldntenc = ntenc;
-        else if (ntenc == oldntenc)
+        } else if (ntenc == oldntenc) {
             enc_counter++;
+        }
     }
 
     if (enc_counter) {

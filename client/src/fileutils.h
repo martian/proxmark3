@@ -55,6 +55,7 @@ typedef enum {
     jsf15,
     jsf15_v2,
     jsf15_v3,
+    jsf15_v4,
     jsfLegic,
     jsfLegic_v2,
     jsfT55x7,
@@ -299,7 +300,7 @@ int searchFile(char **foundpath, const char *pm3dir, const char *searchname, con
  * @param filename
  * @return
  */
-DumpFileType_t getfiletype(const char *filename);
+DumpFileType_t get_filetype(const char *filename);
 
 
 /**

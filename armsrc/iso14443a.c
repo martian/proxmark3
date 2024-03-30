@@ -144,8 +144,13 @@ static hf14a_config hf14aconfig = { 0, 0, 0, 0, 0 } ;
 
 
 // Polling frames and configurations
-static iso14a_polling_parameters_t WUPA_POLLING_PARAMETERS = {
-    .frames = { {{ 0x52 }, 1, 7, 0} },
+iso14a_polling_parameters_t WUPA_POLLING_PARAMETERS = {
+    .frames = { {{ ISO14443A_CMD_WUPA }, 1, 7, 0} },
+    .frame_count = 1,
+    .extra_timeout = 0,
+};
+iso14a_polling_parameters_t REQA_POLLING_PARAMETERS = {
+    .frames = { {{ ISO14443A_CMD_REQA }, 1, 7, 0} },
     .frame_count = 1,
     .extra_timeout = 0,
 };
@@ -683,7 +688,9 @@ void RAMFUNC SniffIso14443a(uint8_t param) {
     // Set up the demodulator for the reader -> tag commands
     Uart14aInit(receivedCmd, receivedCmdPar);
 
-    Dbprintf("Starting to sniff. Press PM3 Button to stop.");
+    if (g_dbglevel >= DBG_INFO) {
+        DbpString("Press " _GREEN_("pm3 button") " to abort sniffing");
+    }
 
     // The DMA buffer, used to stream samples from the FPGA
     dmabuf8_t *dma = get_dma8();
@@ -1190,12 +1197,12 @@ bool SimulateIso14443aInit(uint8_t tagType, uint16_t flags, uint8_t *data, tag_r
         if (tagType == 2 || tagType == 7) {
             uint16_t start = MFU_DUMP_PREFIX_LENGTH;
             uint8_t emdata[8];
-            emlGetMemBt(emdata, start, sizeof(emdata));
+            emlGet(emdata, start, sizeof(emdata));
             memcpy(data, emdata, 3); // uid bytes 0-2
             memcpy(data + 3, emdata + 4, 4); // uid bytes 3-7
             flags |= FLAG_7B_UID_IN_DATA;
         } else {
-            emlGetMemBt(data, 0, 4);
+            emlGet(data, 0, 4);
             flags |= FLAG_4B_UID_IN_DATA;
         }
     }
@@ -1285,8 +1292,8 @@ bool SimulateIso14443aInit(uint8_t tagType, uint16_t flags, uint8_t *data, tag_r
     if (tagType == 7) {
         uint8_t pwd[4] = {0, 0, 0, 0};
         uint8_t gen_pwd[4] = {0, 0, 0, 0};
-        emlGetMemBt(pwd, (*pages - 1) * 4 + MFU_DUMP_PREFIX_LENGTH, sizeof(pwd));
-        emlGetMemBt(rPACK, (*pages) * 4 + MFU_DUMP_PREFIX_LENGTH, sizeof(rPACK));
+        emlGet(pwd, (*pages - 1) * 4 + MFU_DUMP_PREFIX_LENGTH, sizeof(pwd));
+        emlGet(rPACK, (*pages) * 4 + MFU_DUMP_PREFIX_LENGTH, sizeof(rPACK));
 
         Uint4byteToMemBe(gen_pwd, ul_ev1_pwdgenB(data));
         if (memcmp(pwd, gen_pwd, sizeof(pwd)) == 0) {
@@ -1569,7 +1576,7 @@ void SimulateIso14443aTag(uint8_t tagType, uint16_t flags, uint8_t *data, uint8_
                     // first blocks of emu are header
                     uint16_t start = block * 4 + MFU_DUMP_PREFIX_LENGTH;
                     uint8_t emdata[MAX_MIFARE_FRAME_SIZE];
-                    emlGetMemBt(emdata, start, 16);
+                    emlGet(emdata, start, 16);
                     AddCrc14A(emdata, 16);
                     EmSendCmd(emdata, sizeof(emdata));
                     numReads++;  // Increment number of times reader requested a block
@@ -1588,7 +1595,7 @@ void SimulateIso14443aTag(uint8_t tagType, uint16_t flags, uint8_t *data, uint8_
                 p_response = &responses[RESP_INDEX_UIDC1];
             } else { // all other tags (16 byte block tags)
                 uint8_t emdata[MAX_MIFARE_FRAME_SIZE] = {0};
-                emlGetMemBt(emdata, block, 16);
+                emlGet(emdata, block, 16);
                 AddCrc14A(emdata, 16);
                 EmSendCmd(emdata, sizeof(emdata));
                 // We already responded, do not send anything with the EmSendCmd14443aRaw() that is called below
@@ -1605,7 +1612,7 @@ void SimulateIso14443aTag(uint8_t tagType, uint16_t flags, uint8_t *data, uint8_
                 // first blocks of emu are header
                 int start = block1 * 4 + MFU_DUMP_PREFIX_LENGTH;
                 len   = (block2 - block1 + 1) * 4;
-                emlGetMemBt(emdata, start, len);
+                emlGet(emdata, start, len);
                 AddCrc14A(emdata, len);
                 EmSendCmd(emdata, len + 2);
             }
@@ -1723,7 +1730,7 @@ void SimulateIso14443aTag(uint8_t tagType, uint16_t flags, uint8_t *data, uint8_
             p_response = NULL;
         } else if (receivedCmd[0] == MIFARE_ULEV1_AUTH && len == 7 && tagType == 7) { // NTAG / EV-1
             uint8_t pwd[4] = {0, 0, 0, 0};
-            emlGetMemBt(pwd, (pages - 1) * 4 + MFU_DUMP_PREFIX_LENGTH, sizeof(pwd));
+            emlGet(pwd, (pages - 1) * 4 + MFU_DUMP_PREFIX_LENGTH, sizeof(pwd));
             if (g_dbglevel >= DBG_DEBUG) {
                 Dbprintf("Reader sent password: ");
                 Dbhexdump(4, receivedCmd + 1, 0);
@@ -1747,7 +1754,7 @@ void SimulateIso14443aTag(uint8_t tagType, uint16_t flags, uint8_t *data, uint8_
 
         } else if (receivedCmd[0] == MIFARE_ULEV1_VCSL && len == 23 && tagType == 7) {
             uint8_t cmd[3] = {0, 0, 0};
-            emlGetMemBt(cmd, (pages - 2) * 4 + 1 + MFU_DUMP_PREFIX_LENGTH, 1);
+            emlGet(cmd, (pages - 2) * 4 + 1 + MFU_DUMP_PREFIX_LENGTH, 1);
             AddCrc14A(cmd, sizeof(cmd) - 2);
             EmSendCmd(cmd, sizeof(cmd));
             p_response = NULL;

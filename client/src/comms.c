@@ -314,19 +314,26 @@ static void PacketResponseReceived(PacketResponseNG *packet) {
                 //PrintAndLogEx(NORMAL, "[" _MAGENTA_("pm3") "] ["_BLUE_("#")"] " "%s", s);
                 PrintAndLogEx(NORMAL, "[" _BLUE_("#") "] %s", s);
             } else {
-                if (flag & FLAG_INPLACE)
+                if (flag & FLAG_INPLACE) {
                     PrintAndLogEx(NORMAL, "\r" NOLF);
+                }
 
                 PrintAndLogEx(NORMAL, "%s" NOLF, s);
 
-                if (flag & FLAG_NEWLINE)
+                if (flag & FLAG_NEWLINE) {
                     PrintAndLogEx(NORMAL, "");
+                }
             }
             break;
         }
         case CMD_DEBUG_PRINT_INTEGERS: {
-            if (packet->ng == false)
-                PrintAndLogEx(NORMAL, "[" _MAGENTA_("pm3") "] ["_BLUE_("#")"] " "%" PRIx64 ", %" PRIx64 ", %" PRIx64 "", packet->oldarg[0], packet->oldarg[1], packet->oldarg[2]);
+            if (packet->ng == false) {
+                PrintAndLogEx(NORMAL, "[" _MAGENTA_("pm3") "] ["_BLUE_("#")"] " "%" PRIx64 ", %" PRIx64 ", %" PRIx64 ""
+                    , packet->oldarg[0]
+                    , packet->oldarg[1]
+                    , packet->oldarg[2]
+                );
+            }
             break;
         }
         // iceman:  hw status - down the path on device, runs printusbspeed which starts sending a lot of
@@ -1133,6 +1140,12 @@ bool GetFromDevice(DeviceMemType_t memtype, uint8_t *dest, uint32_t bytes, uint3
         case FPGA_MEM: {
             SendCommandNG(CMD_FPGAMEM_DOWNLOAD, NULL, 0);
             return dl_it(dest, bytes, response, ms_timeout, show_warning, CMD_FPGAMEM_DOWNLOADED);
+        }
+        case MCU_FLASH:
+        case MCU_MEM: {
+            uint32_t flags = (memtype == MCU_MEM) ? READ_MEM_DOWNLOAD_FLAG_RAW : 0;
+            SendCommandBL(CMD_READ_MEM_DOWNLOAD, start_index, bytes, flags, NULL, 0);
+            return dl_it(dest, bytes, response, ms_timeout, show_warning, CMD_READ_MEM_DOWNLOADED);
         }
     }
     return false;

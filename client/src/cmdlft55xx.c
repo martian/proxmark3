@@ -398,7 +398,7 @@ int t55xxWrite(uint8_t block, bool page1, bool usepwd, bool testMode, uint32_t p
 
 void printT5xxHeader(uint8_t page) {
     PrintAndLogEx(NORMAL, "");
-    PrintAndLogEx(SUCCESS, "Page " _YELLOW_("%d"), page);
+    PrintAndLogEx(SUCCESS, _YELLOW_("Page %d"), page);
     PrintAndLogEx(SUCCESS, "blk | hex data | binary                           | ascii");
     PrintAndLogEx(SUCCESS, "----+----------+----------------------------------+-------");
 }
@@ -1286,6 +1286,7 @@ bool testKnownConfigBlock(uint32_t block0) {
         case T55X7_KERI_CONFIG_BLOCK:
         case T55X7_NEXWATCH_CONFIG_BLOCK:
         case T55X7_JABLOTRON_CONFIG_BLOCK:
+        case T55X7_PYRONIX_CONFIG_BLOCK:
             return true;
     }
     return false;
@@ -2008,6 +2009,9 @@ static void printT5x7KnownBlock0(uint32_t b0) {
         case T55X7_NEXWATCH_CONFIG_BLOCK:
             snprintf(s + strlen(s), sizeof(s) - strlen(s), "NexWatch, Quadrakey ");
             break;
+        case T55X7_PYRONIX_CONFIG_BLOCK:
+            snprintf(s + strlen(s), sizeof(s) - strlen(s), "Pyronix ");
+            break;
         default:
             break;
     }
@@ -2277,6 +2281,9 @@ static int CmdT55xxDump(const char *Cmd) {
         downlink_mode = ref1of4;
 
     bool success = true;
+
+    PrintAndLogEx(NORMAL, "");
+    PrintAndLogEx(INFO, "------------------------- " _CYAN_("T55xx tag memory") " -----------------------------");
 
     // Due to the few different T55xx cards and number of blocks supported
     // will save the dump file if ALL page 0 is OK
@@ -2897,7 +2904,7 @@ static int CmdResetRead(const char *Cmd) {
         free(got);
     }
 
-    PrintAndLogEx(INFO, "Done");
+    PrintAndLogEx(INFO, "Done!");
     return PM3_SUCCESS;
 }
 
@@ -3094,7 +3101,7 @@ static int CmdT55xxChkPwds(const char *Cmd) {
         snprintf(filename, sizeof(filename), "t55xx_default_pwds");
     }
 
-    PrintAndLogEx(INFO, "press " _GREEN_("<Enter>") " to exit");
+    PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " to exit");
     PrintAndLogEx(NORMAL, "");
     /*
     // block 7,  page1 = false, usepwd = false, override = false, pwd = 00000000
@@ -3190,7 +3197,7 @@ static int CmdT55xxChkPwds(const char *Cmd) {
             return PM3_ESOFT;
         }
 
-        PrintAndLogEx(INFO, "press " _GREEN_("<Enter>") " to exit");
+        PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " to exit");
 
         for (uint32_t c = 0; c < keycount && found == false; ++c) {
 
@@ -3304,7 +3311,7 @@ static int CmdT55xxBruteForce(const char *Cmd) {
         return PM3_EINVARG;
     }
 
-    PrintAndLogEx(INFO, "press " _GREEN_("<Enter>") " to exit");
+    PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " to exit");
     PrintAndLogEx(INFO, "Search password range [%08X -> %08X]", start_password, end_password);
 
     uint64_t t1 = msclock();
@@ -3415,7 +3422,7 @@ static int CmdT55xxRecoverPW(const char *Cmd) {
     else if (r3)
         downlink_mode = ref1of4;
 
-    PrintAndLogEx(INFO, "press " _GREEN_("<Enter>") " to exit");
+    PrintAndLogEx(INFO, "Press " _GREEN_("<Enter>") " to exit");
 
     int bit = 0;
     uint32_t curr_password = 0x0;
